@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -55,7 +55,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Velox")
         self.resize(1040, 780)
         self.config: VeloxConfig = load_user_config()
-        self._thread: QThread | None = None
         self._worker: PipelineWorker | None = None
         self._files_total = 0
         self._files_done = 0
@@ -207,7 +206,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------- run
     def _start(self, *, dry_run: bool) -> None:
-        if self._thread is not None:
+        if self._worker is not None:
             return
         files = self.selected_files()
         if not files:
@@ -229,23 +228,21 @@ class MainWindow(QMainWindow):
         self._set_running(True)
         self._log(("Dry run — " if dry_run else "") + f"Starting {len(files)} file(s)…")
 
-        self._thread = QThread(self)
-        self._worker = PipelineWorker(self.config, [Path(f) for f in files], dry_run)
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.run_started.connect(self._on_run_started)
-        self._worker.file_started.connect(self._on_file_started)
-        self._worker.step_started.connect(self._on_step_started)
-        self._worker.note.connect(self._log)
-        self._worker.pass_started.connect(lambda text: self._log(f"▶ {text}"))
-        self._worker.progress.connect(self._on_progress)
-        self._worker.pass_finished.connect(self._on_pass_finished)
-        self._worker.file_finished.connect(self._on_file_finished)
-        self._worker.failed.connect(self._on_failed)
-        self._worker.run_finished.connect(self._on_run_finished)
-        self._worker.run_finished.connect(self._thread.quit)
-        self._thread.finished.connect(self._cleanup_thread)
-        self._thread.start()
+        worker = PipelineWorker(self.config, [Path(f) for f in files], dry_run)
+        queued = Qt.ConnectionType.QueuedConnection
+        worker.run_started.connect(self._on_run_started, queued)
+        worker.file_started.connect(self._on_file_started, queued)
+        worker.step_started.connect(self._on_step_started, queued)
+        worker.note.connect(self._log, queued)
+        worker.pass_started.connect(self._on_pass_started, queued)
+        worker.progress.connect(self._on_progress, queued)
+        worker.pass_finished.connect(self._on_pass_finished, queued)
+        worker.file_finished.connect(self._on_file_finished, queued)
+        worker.failed.connect(self._on_failed, queued)
+        worker.run_finished.connect(self._on_run_finished, queued)
+
+        self._worker = worker
+        worker.start()
 
     def _stop(self) -> None:
         if self._worker is not None:
@@ -253,10 +250,7 @@ class MainWindow(QMainWindow):
             self.stop_button.setEnabled(False)
             self._log("Stopping after the current pass…")
 
-    def _cleanup_thread(self) -> None:
-        if self._thread is not None:
-            self._thread.deleteLater()
-        self._thread = None
+    def _release_worker(self) -> None:
         self._worker = None
 
     def _set_running(self, running: bool) -> None:
@@ -277,6 +271,9 @@ class MainWindow(QMainWindow):
 
     def _on_step_started(self, name: str) -> None:
         self._log(f"[{name}]")
+
+    def _on_pass_started(self, description: str) -> None:
+        self._log(f"▶ {description}")
 
     def _on_progress(self, fraction: float) -> None:
         self.file_bar.setValue(int(max(0.0, min(1.0, fraction)) * 1000))
@@ -313,6 +310,8 @@ class MainWindow(QMainWindow):
         failed = [r for r in reports if not r.ok and not r.cancelled]
         self._log(f"Done. {len(reports)} file(s), {len(failed)} failed.")
         self.results._update_summary()
+        # release the worker once we are back in the event loop
+        QTimer.singleShot(0, self._release_worker)
 
     # ------------------------------------------------------------- settings
     def _load_settings(self) -> None:
@@ -373,9 +372,8 @@ class MainWindow(QMainWindow):
         self.log.appendPlainText(message)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        if self._worker is not None:
-            self._worker.cancel()
-        if self._thread is not None:
-            self._thread.quit()
-            self._thread.wait(5000)
+        worker = self._worker
+        if worker is not None:
+            worker.cancel()
+            worker.join(5000)
         event.accept()

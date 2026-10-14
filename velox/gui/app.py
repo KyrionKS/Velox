@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import faulthandler
+import sys
+
 __all__ = ["main"]
 
 
 def main(argv: list[str] | None = None) -> int:
-    import sys
+    # Print a Python traceback if the process ever crashes (SIGSEGV), so a
+    # native crash can be diagnosed instead of just "segmentation fault".
+    faulthandler.enable()
+
+    def _excepthook(exc_type, exc_value, exc_tb):
+        import traceback
+
+        traceback.print_exception(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _excepthook
 
     from PySide6.QtWidgets import QApplication
 

@@ -1,4 +1,11 @@
-"""Qt worker that runs the pipeline on a background thread."""
+"""Background worker that runs the pipeline off the GUI thread.
+
+We deliberately use a plain Python thread (not ``QThread``) and emit Qt signals
+from it.  Emitting signals from a non-GUI thread is thread-safe in Qt/PySide and
+the GUI connections are made with ``Qt.QueuedConnection``, so widget updates
+always happen on the main thread.  This avoids the classic ``QThread`` +
+``deleteLater`` lifetime crashes.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +14,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal
 
 from ..config import VeloxConfig
 from ..errors import VeloxError
@@ -16,7 +23,7 @@ from ..pipeline import Pipeline, RunReport
 
 
 class _QtObserver(ProgressObserver):
-    """Bridges pipeline callbacks to Qt signals (queued to the GUI thread)."""
+    """Forwards pipeline callbacks to Qt signals."""
 
     def __init__(self, worker: "PipelineWorker") -> None:
         self.worker = worker
@@ -67,6 +74,12 @@ class PipelineWorker(QObject):
         self.files = [Path(f) for f in files]
         self.dry_run = dry_run
         self._cancel = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    # ---------------------------------------------------------------- control
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self.run, name="velox-worker", daemon=True)
+        self._thread.start()
 
     def cancel(self) -> None:
         self._cancel.set()
@@ -75,8 +88,16 @@ class PipelineWorker(QObject):
     def cancelled(self) -> bool:
         return self._cancel.is_set()
 
-    @Slot()
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def join(self, timeout: float | None = None) -> None:
+        if self._thread is not None:
+            self._thread.join(timeout)
+
+    # ------------------------------------------------------------------- work
     def run(self) -> None:
+        """Run the pipeline.  Safe to call directly (e.g. in tests)."""
         reports: list[Any] = []
         logger = logging.getLogger("velox.gui")
         logger.handlers.clear()
@@ -84,24 +105,27 @@ class PipelineWorker(QObject):
         logger.propagate = False
 
         try:
-            pipeline = Pipeline(self.config, logger)
-        except VeloxError as exc:
-            self.failed.emit(str(exc))
-            self.run_finished.emit(reports)
-            return
+            try:
+                pipeline = Pipeline(self.config, logger)
+            except VeloxError as exc:
+                self.failed.emit(str(exc))
+                return
 
-        observer = _QtObserver(self)
-        observer.on_run_started(self.files)
-        for file in self.files:
-            if self._cancel.is_set():
-                break
-            reports.append(
-                pipeline.process(
-                    file,
-                    dry_run=self.dry_run,
-                    observer=observer,
-                    cancel=self._cancel.is_set,
+            observer = _QtObserver(self)
+            observer.on_run_started(self.files)
+            for file in self.files:
+                if self._cancel.is_set():
+                    break
+                reports.append(
+                    pipeline.process(
+                        file,
+                        dry_run=self.dry_run,
+                        observer=observer,
+                        cancel=self._cancel.is_set,
+                    )
                 )
-            )
-        observer.on_run_finished(reports)
-        self.run_finished.emit(reports)
+            observer.on_run_finished(reports)
+        except Exception as exc:  # pragma: no cover - defensive
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+        finally:
+            self.run_finished.emit(reports)
