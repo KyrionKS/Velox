@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("QT_QPA_PLATFORM", "minimal")
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402  (ensures the platform plugin loads)
 
 from velox.config import VeloxConfig  # noqa: E402
 from velox.events import PassEvent  # noqa: E402
@@ -23,11 +23,6 @@ from velox.gui.settings import SettingsPanel  # noqa: E402
 
 FFMPEG = os.environ.get("VELOX_TEST_FFMPEG") or shutil.which("ffmpeg")
 FFPROBE = os.environ.get("VELOX_TEST_FFPROBE") or shutil.which("ffprobe")
-
-
-@pytest.fixture(scope="module")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 def test_settings_roundtrip(qapp):

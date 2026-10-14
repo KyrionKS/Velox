@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
         self._files_done = 0
         self._current_file = ""
         self._step_text = ""
+        self._pass_active = False
         self._pass_started_at: float | None = None
         self._run_started_at: float | None = None
 
@@ -148,7 +149,7 @@ class MainWindow(QMainWindow):
         self.file_bar.setFormat("%p%")
         layout.addWidget(self.file_bar)
 
-        self.step_label = QLabel("Add files and press Start.")
+        self.step_label = QLabel("Ready — add files, then press Start.")
         self.step_label.setObjectName("stepLabel")
         layout.addWidget(self.step_label)
 
@@ -275,14 +276,14 @@ class MainWindow(QMainWindow):
         self.log.clear()
         self._files_total = len(files)
         self._files_done = 0
-        self._step_text = "Preparing…"
+        self._pass_active = False
         self._pass_started_at = None
         self._run_started_at = time.monotonic()
         self.overall_bar.setRange(0, self._files_total)
         self.overall_bar.setValue(0)
         self.current_label.setText("Preparing…")
-        self.file_bar.setValue(0)
-        self.step_label.setText("Preparing…")
+        self._set_busy(True)
+        self._show_step("Preparing…")
         self.count_label.setText(f"0 of {self._files_total}")
         self._set_running(True)
         self._elapsed_timer.start()
@@ -327,6 +328,18 @@ class MainWindow(QMainWindow):
             f"{self._files_total}  ·  {elapsed}"
         )
 
+    def _set_busy(self, busy: bool) -> None:
+        """Indeterminate bar between passes, determinate while a pass runs."""
+        if busy:
+            self.file_bar.setRange(0, 0)
+        else:
+            self.file_bar.setRange(0, 100)
+
+    def _show_step(self, text: str) -> None:
+        """Set the always-visible 'what is happening now' line."""
+        self._step_text = text
+        self.step_label.setText(f"▶ {text}")
+
     # --------------------------------------------------------------- signals
     def _on_run_started(self, total: int) -> None:
         self.overall_bar.setRange(0, max(1, total))
@@ -336,37 +349,47 @@ class MainWindow(QMainWindow):
     def _on_file_started(self, path: str, summary: str) -> None:
         self._current_file = Path(path).name
         self.current_label.setText(self._current_file)
-        self.file_bar.setValue(0)
-        self._step_text = "Analysing streams…"
+        self._pass_active = False
         self._pass_started_at = None
-        self.step_label.setText(self._step_text)
+        self._set_busy(True)
+        self._show_step("Analysing streams…")
         self._update_elapsed()
         self._log(f"— {self._current_file}: {summary}")
 
     def _on_step_started(self, name: str) -> None:
+        self._pass_active = False
+        self._pass_started_at = None
+        self._set_busy(True)
+        self._show_step(name)
         self._log(f"[{name}]")
 
     def _on_pass_started(self, description: str) -> None:
-        self._step_text = description
+        self._pass_active = True
         self._pass_started_at = time.monotonic()
+        self._set_busy(False)
         self.file_bar.setValue(0)
-        self.step_label.setText(description)
+        self._show_step(description)
         self._log(f"▶ {description}")
 
     def _on_progress(self, fraction: float) -> None:
         fraction = max(0.0, min(1.0, fraction))
+        if not self._pass_active:
+            self._pass_active = True
+            self._pass_started_at = time.monotonic()
+            self._set_busy(False)
         self.file_bar.setValue(int(fraction * 100))
         if self._pass_started_at is not None and fraction > 0.02:
             elapsed = time.monotonic() - self._pass_started_at
             remaining = elapsed * (1.0 - fraction) / fraction
             self.step_label.setText(
-                f"{self._step_text}  ·  {int(fraction * 100)}%  ·  "
+                f"▶ {self._step_text}  ·  {int(fraction * 100)}%  ·  "
                 f"~{_fmt_duration(remaining)} left"
             )
         else:
-            self.step_label.setText(f"{self._step_text}  ·  {int(fraction * 100)}%")
+            self.step_label.setText(f"▶ {self._step_text}  ·  {int(fraction * 100)}%")
 
     def _on_pass_finished(self, event: PassEvent) -> None:
+        self._pass_active = False
         self.results.add_pass(self._current_file or "?", event)
         self._log(f"   ✓ {event.describe()}")
 
@@ -397,9 +420,13 @@ class MainWindow(QMainWindow):
         self._set_running(False)
         self._elapsed_timer.stop()
         self._run_started_at = None
+        self._pass_active = False
+        self._set_busy(False)
         self.file_bar.setValue(100)
         failed = [r for r in reports if not r.ok and not r.cancelled]
-        self.step_label.setText("Finished." if not failed else f"Finished with {len(failed)} error(s).")
+        self.step_label.setText(
+            "Finished." if not failed else f"Finished with {len(failed)} error(s)."
+        )
         self.count_label.setText(f"{self._files_done} of {self._files_total}")
         self._log(f"Done. {len(reports)} file(s), {len(failed)} failed.")
         self.results._update_summary()

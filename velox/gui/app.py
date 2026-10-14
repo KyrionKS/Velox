@@ -48,9 +48,6 @@ QTabWidget::pane {
     border: 1px solid palette(mid);
     border-radius: 8px;
 }
-#stepLabel {
-    color: gray;
-}
 """
 
 

@@ -27,9 +27,6 @@ def _find_tool(name: str) -> str | None:
 FFMPEG = _find_tool("ffmpeg")
 FFPROBE = _find_tool("ffprobe")
 
-# Keep a reference to the Qt application so it is not garbage collected.
-_QT_APP = None
-
 pytestmark = pytest.mark.skipif(
     not FFMPEG or not FFPROBE, reason="ffmpeg/ffprobe not available"
 )
@@ -343,15 +340,10 @@ def test_report_has_pass_list(tmp_path: Path):
     assert report.original_bytes > report.final_bytes
 
 
-def test_gui_worker_emits_signals(tmp_path: Path):
-    global _QT_APP
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+def test_gui_worker_emits_signals(tmp_path: Path, qapp):
     pytest.importorskip("PySide6")
-    from PySide6.QtWidgets import QApplication
 
     from velox.gui.worker import PipelineWorker
-
-    _QT_APP = QApplication.instance() or _QT_APP or QApplication([])
 
     source = tmp_path / "messy.mkv"
     _make_messy_sample(source)
