@@ -1,8 +1,9 @@
-"""The settings panel: a simple Basic tab and an Advanced tab."""
+"""The settings panel: a sub-sidebar (Video / Audio / Subtitles / Output /
+Advanced) with one scrollable page per section."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -12,12 +13,15 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
-    QTabWidget,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -38,6 +42,8 @@ ENCODERS = [
 ]
 
 AUDIO_CODECS = ["aac", "ac3", "eac3", "flac", "libmp3lame"]
+
+CONTAINERS = ["mkv", "mp4", "original"]
 
 PLUGIN_LABELS = {
     "reorder_streams": "Move Video First",
@@ -62,6 +68,8 @@ DEFAULT_AUDIO_PRESETS = {
     "Highest channels": "best",
 }
 DEFAULT_AUDIO_REVERSE = {value: label for label, value in DEFAULT_AUDIO_PRESETS.items()}
+
+SECTIONS = ["Video", "Audio", "Subtitles", "Output", "Advanced"]
 
 
 def _spin(minimum: int, maximum: int, value: int, suffix: str = "") -> QSpinBox:
@@ -94,25 +102,111 @@ class SettingsPanel(QWidget):
 
     # ------------------------------------------------------------------ build
     def _build(self) -> None:
-        tabs = QTabWidget()
-        tabs.setDocumentMode(True)
-        tabs.addTab(self._scrollable(self._build_basic()), "Basic")
-        tabs.addTab(self._scrollable(self._build_advanced()), "Advanced")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(tabs, 1)
-        layout.addLayout(self._build_footer())
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-    def _scrollable(self, content: QWidget) -> QScrollArea:
-        # Keep the content at a comfortable macOS-pane width and left-aligned,
-        # scrolling vertically when needed (so nothing is ever cut off).
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+
+        self.nav = QListWidget()
+        self.nav.setObjectName("subnav")
+        self.nav.setFixedWidth(150)
+        self.nav.setFrameShape(QFrame.Shape.NoFrame)
+        self.nav.setSpacing(1)
+        for title in SECTIONS:
+            item = QListWidgetItem(title)
+            item.setSizeHint(QSize(0, 28))
+            self.nav.addItem(item)
+
+        divider = QFrame()
+        divider.setObjectName("divider")
+        divider.setFixedWidth(1)
+        divider.setFrameShape(QFrame.Shape.NoFrame)
+
+        self.pages = QStackedWidget()
+        self.pages.addWidget(
+            self._page(
+                "Video",
+                "How the video is encoded and how its size is chosen.",
+                self._quality_group(),
+                self._encoder_group(),
+            )
+        )
+        self.pages.addWidget(
+            self._page(
+                "Audio",
+                "Which audio tracks are kept and how they are encoded.",
+                self._audio_group(),
+            )
+        )
+        self.pages.addWidget(
+            self._page(
+                "Subtitles",
+                "Which subtitle tracks are kept.",
+                self._subtitles_group(),
+            )
+        )
+        self.pages.addWidget(
+            self._page(
+                "Output",
+                "What happens to the original file.",
+                self._output_group(),
+            )
+        )
+        self.pages.addWidget(
+            self._page(
+                "Advanced",
+                "Fine-tuning, performance and external tools.",
+                self._limits_group(),
+                self._sizecheck_group(),
+                self._performance_group(),
+                self._steps_group(),
+                self._tools_group(),
+            )
+        )
+
+        self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self.nav.setCurrentRow(0)
+
+        body.addWidget(self.nav)
+        body.addWidget(divider)
+        body.addWidget(self.pages, 1)
+        root.addLayout(body, 1)
+        root.addLayout(self._build_footer())
+
+        self._update_mode_visibility()
+
+    def _page(self, title: str, description: str, *blocks: QWidget) -> QScrollArea:
+        content = QWidget()
+        column = QVBoxLayout(content)
+        column.setContentsMargins(20, 16, 20, 16)
+        column.setSpacing(12)
         content.setMaximumWidth(760)
-        wrapper = QWidget()
-        column = QVBoxLayout(wrapper)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.addWidget(content, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+
+        heading = QLabel(title)
+        font = heading.font()
+        font.setBold(True)
+        font.setPointSizeF(font.pointSizeF() + 1.0)
+        heading.setFont(font)
+        column.addWidget(heading)
+
+        if description:
+            desc = QLabel(description)
+            desc.setObjectName("secondary")
+            desc.setWordWrap(True)
+            column.addWidget(desc)
+
+        for block in blocks:
+            column.addWidget(block)
         column.addStretch(1)
+
+        wrapper = QWidget()
+        row = QVBoxLayout(wrapper)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(content, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        row.addStretch(1)
 
         area = QScrollArea()
         area.setWidgetResizable(True)
@@ -120,19 +214,6 @@ class SettingsPanel(QWidget):
         area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         area.setWidget(wrapper)
         return area
-
-    def _build_footer(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setContentsMargins(20, 8, 20, 12)
-        row.setSpacing(8)
-        load = QPushButton("Reload")
-        load.clicked.connect(self.load_requested.emit)
-        save = QPushButton("Save")
-        save.clicked.connect(self.save_requested.emit)
-        row.addStretch(1)
-        row.addWidget(load)
-        row.addWidget(save)
-        return row
 
     def _group(self, title: str, form: QFormLayout) -> QGroupBox:
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -147,51 +228,72 @@ class SettingsPanel(QWidget):
         box.setLayout(form)
         return box
 
-    def _build_basic(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
+    def _build_footer(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setContentsMargins(20, 8, 20, 12)
+        row.setSpacing(8)
+        load = QPushButton("Reload")
+        load.clicked.connect(self.load_requested.emit)
+        save = QPushButton("Save")
+        save.clicked.connect(self.save_requested.emit)
+        row.addStretch(1)
+        row.addWidget(load)
+        row.addWidget(save)
+        return row
 
-        # --- Quality -----------------------------------------------------
-        qform = QFormLayout()
-        self.preset = QComboBox()
-        for name, label in PRESET_LABELS:
-            self.preset.addItem(label, name)
-        self.preset.setToolTip(
-            "Overall size/quality preset for the 'Automatic' (tier) mode.\n"
-            "Each preset maps to a bits-per-pixel value."
-        )
-        self.bpp = _dspin(0.005, 0.3, QUALITY_PRESETS[DEFAULT_PRESET], 4, " bpp")
-        self.bpp.setToolTip(
-            "Bits per pixel per frame (Automatic mode). Higher = better quality."
-        )
+    # ---------------------------------------------------------------- blocks
+    def _quality_group(self) -> QGroupBox:
+        form = QFormLayout()
+        self.mode = QComboBox()
+        for label, value in BITRATE_MODES:
+            self.mode.addItem(label, value)
+        self.mode.setToolTip("How the output size is decided.")
+
         self.quality = _spin(1, 100, 50)
         self.quality.setToolTip(
             "Constant quality (-q:v) for Apple Silicon VideoToolbox.\n"
             "1-100, higher is better. Recommended 45-65 (50 = good, smaller files)."
         )
-        qform.addRow("Preset", self.preset)
-        qform.addRow("Target bits per pixel", self.bpp)
-        qform.addRow("Constant quality", self.quality)
-        layout.addWidget(self._group("Quality", qform))
-        self._qform = qform
-
-        # --- Bitrate mode ------------------------------------------------
-        mform = QFormLayout()
-        self.mode = QComboBox()
-        for label, value in BITRATE_MODES:
-            self.mode.addItem(label, value)
+        self.preset = QComboBox()
+        for name, label in PRESET_LABELS:
+            self.preset.addItem(label, name)
+        self.preset.setToolTip("Size/quality preset for the 'Automatic' mode.")
+        self.bpp = _dspin(0.005, 0.3, QUALITY_PRESETS[DEFAULT_PRESET], 4, " bpp")
+        self.bpp.setToolTip("Bits per pixel per frame (Automatic mode). Higher = better quality.")
         self.target_size = _dspin(1, 200_000, 1500, 0, " MiB")
         self.target_size.setToolTip("Desired output size per file.")
-        mform.addRow("Mode", self.mode)
-        mform.addRow("Target size", self.target_size)
-        self.mode.currentIndexChanged.connect(self._update_mode_visibility)
-        layout.addWidget(self._group("Bitrate", mform))
-        self._mform = mform
 
-        # --- Audio -------------------------------------------------------
-        aform = QFormLayout()
+        form.addRow("Mode", self.mode)
+        form.addRow("Constant quality", self.quality)
+        form.addRow("Preset", self.preset)
+        form.addRow("Bits per pixel", self.bpp)
+        form.addRow("Target size", self.target_size)
+        self._vform = form
+        self.mode.currentIndexChanged.connect(self._update_mode_visibility)
+        return self._group("Quality && size", form)
+
+    def _encoder_group(self) -> QGroupBox:
+        form = QFormLayout()
+        self.encoder = QComboBox()
+        for label, value in ENCODERS:
+            self.encoder.addItem(label, value)
+        self.container = QComboBox()
+        self.container.addItems(CONTAINERS)
+        self.container.setToolTip("Output container. 'original' keeps the source's.")
+        self.tenbit = QCheckBox("10-bit output (Main10)")
+        self.tenbit.setToolTip("Better compression and less banding. Disable for very old players.")
+        self.spatial_aq = QCheckBox("Spatial adaptive quantization")
+        self.hw_decode = QCheckBox("Use hardware decoding (VideoToolbox)")
+
+        form.addRow("Encoder", self.encoder)
+        form.addRow("Container", self.container)
+        form.addRow("", self.tenbit)
+        form.addRow("", self.spatial_aq)
+        form.addRow("", self.hw_decode)
+        return self._group("Encoder", form)
+
+    def _audio_group(self) -> QGroupBox:
+        form = QFormLayout()
         self.audio_langs = QLineEdit("eng,und")
         self.audio_langs.setToolTip("ISO-639-2 codes to keep, comma separated. Keep 'und' for untagged.")
         self.audio_codec = QComboBox()
@@ -207,40 +309,25 @@ class SettingsPanel(QWidget):
             "Which kept audio track becomes the player default.\n"
             "Pick a preset or type a language code (e.g. eng)."
         )
-        aform.addRow("Keep languages", self.audio_langs)
-        aform.addRow("Output codec", self.audio_codec)
-        aform.addRow("Bitrate cap", self.audio_cap)
-        aform.addRow("Default track", self.default_audio)
-        layout.addWidget(self._group("Audio", aform))
+        form.addRow("Keep languages", self.audio_langs)
+        form.addRow("Output codec", self.audio_codec)
+        form.addRow("Bitrate cap", self.audio_cap)
+        form.addRow("Default track", self.default_audio)
+        return self._group("Tracks", form)
 
-        # --- Subtitles ---------------------------------------------------
-        sform = QFormLayout()
+    def _subtitles_group(self) -> QGroupBox:
+        form = QFormLayout()
         self.sub_langs = QLineEdit("eng")
         self.sub_langs.setToolTip("Subtitle languages to keep, comma separated.")
         self.sub_sdh = QCheckBox("Remove SDH / hard-of-hearing subtitles")
         self.commentary = QCheckBox("Remove commentary / description tracks")
-        sform.addRow("Keep languages", self.sub_langs)
-        sform.addRow("", self.sub_sdh)
-        sform.addRow("", self.commentary)
-        layout.addWidget(self._group("Subtitles", sform))
+        form.addRow("Keep languages", self.sub_langs)
+        form.addRow("", self.sub_sdh)
+        form.addRow("", self.commentary)
+        return self._group("Tracks", form)
 
-        # --- Encoder -----------------------------------------------------
-        eform = QFormLayout()
-        self.encoder = QComboBox()
-        for label, value in ENCODERS:
-            self.encoder.addItem(label, value)
-        self.hw_decode = QCheckBox("Use hardware decoding (VideoToolbox)")
-        self.tenbit = QCheckBox("10-bit output (Main10)")
-        self.tenbit.setToolTip("Better compression and less banding. Disable for very old players.")
-        self.spatial_aq = QCheckBox("Spatial adaptive quantization")
-        eform.addRow("Encoder", self.encoder)
-        eform.addRow("", self.hw_decode)
-        eform.addRow("", self.tenbit)
-        eform.addRow("", self.spatial_aq)
-        layout.addWidget(self._group("Video encoder", eform))
-
-        # --- Output ------------------------------------------------------
-        oform = QFormLayout()
+    def _output_group(self) -> QGroupBox:
+        form = QFormLayout()
         self.keep_original = QCheckBox("Keep the original as a backup (.velox-orig — uses space)")
         self.keep_original.setToolTip(
             "Off (recommended): after a successful encode only the new,\n"
@@ -270,70 +357,64 @@ class SettingsPanel(QWidget):
             "Where temporary files are written. 'source' keeps them next to each "
             "file (on the NAS) so your Mac SSD is never used."
         )
-        oform.addRow("", self.keep_original)
-        oform.addRow("", self.verify_output)
-        oform.addRow("", self.verify_full_decode)
-        oform.addRow("Output folder", out_widget)
-        oform.addRow("Temp folder", self.temp_dir)
-        layout.addWidget(self._group("Output", oform))
+        form.addRow("", self.keep_original)
+        form.addRow("", self.verify_output)
+        form.addRow("", self.verify_full_decode)
+        form.addRow("Output folder", out_widget)
+        form.addRow("Temp folder", self.temp_dir)
+        self.verify_output.toggled.connect(self.verify_full_decode.setEnabled)
+        return self._group("Result", form)
 
-        layout.addStretch(1)
-        self._update_mode_visibility()
-        return page
-
-    def _build_advanced(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
-
-        vform = QFormLayout()
+    def _limits_group(self) -> QGroupBox:
+        form = QFormLayout()
         self.target_codec = QComboBox()
         self.target_codec.addItems(["hevc", "h264"])
-        self.container = QComboBox()
-        self.container.addItems(["mkv", "mp4", "original"])
         self.min_kbps = _spin(0, 500_000, 300, " kbps")
         self.max_kbps = _spin(0, 500_000, 40000, " kbps")
         self.cutoff = _spin(0, 500_000, 0, " kbps")
         self.cutoff.setSpecialValueText("disabled")
-        vform.addRow("Target codec", self.target_codec)
-        vform.addRow("Container", self.container)
-        vform.addRow("Min bitrate", self.min_kbps)
-        vform.addRow("Max bitrate", self.max_kbps)
-        vform.addRow("Skip files below", self.cutoff)
-        layout.addWidget(self._group("Video (advanced)", vform))
+        self.cutoff.setToolTip("Skip files whose video bitrate is below this.")
+        form.addRow("Target codec", self.target_codec)
+        form.addRow("Min bitrate", self.min_kbps)
+        form.addRow("Max bitrate", self.max_kbps)
+        form.addRow("Skip files below", self.cutoff)
+        return self._group("Encoding limits", form)
 
-        zform = QFormLayout()
+    def _sizecheck_group(self) -> QGroupBox:
+        form = QFormLayout()
         self.upper_bound = _dspin(0, 1000, 110, 1, " %")
         self.lower_bound = _dspin(0, 1000, 0, 1, " %")
         self.min_size = _dspin(0, 1_000_000, 0, 0, " MiB")
         self.max_size = _dspin(0, 1_000_000, 0, 0, " MiB")
-        zform.addRow("Upper bound (vs original)", self.upper_bound)
-        zform.addRow("Lower bound (vs original)", self.lower_bound)
-        zform.addRow("Minimum size", self.min_size)
-        zform.addRow("Maximum size", self.max_size)
-        layout.addWidget(self._group("Size check", zform))
+        form.addRow("Upper bound (vs original)", self.upper_bound)
+        form.addRow("Lower bound (vs original)", self.lower_bound)
+        form.addRow("Minimum size", self.min_size)
+        form.addRow("Maximum size", self.max_size)
+        return self._group("Size check", form)
 
-        perf_form = QFormLayout()
+    def _performance_group(self) -> QGroupBox:
+        form = QFormLayout()
         self.concurrency = _spin(1, 8, 2)
         self.concurrency.setToolTip(
             "How many files to process at the same time.\n"
             "2 is a good default on Apple Silicon (the media engine serialises\n"
             "beyond a few concurrent transcodes)."
         )
-        perf_form.addRow("Parallel files", self.concurrency)
-        layout.addWidget(self._group("Performance", perf_form))
+        form.addRow("Parallel files", self.concurrency)
+        return self._group("Performance", form)
 
-        pform = QFormLayout()
+    def _steps_group(self) -> QGroupBox:
+        form = QFormLayout()
         self.plugin_boxes: dict[str, QCheckBox] = {}
         for key in DEFAULT_ORDER:
             box = QCheckBox(PLUGIN_LABELS[key])
             box.setChecked(True)
             self.plugin_boxes[key] = box
-            pform.addRow(box)
-        layout.addWidget(self._group("Pipeline steps", pform))
+            form.addRow(box)
+        return self._group("Pipeline steps", form)
 
-        tform = QFormLayout()
+    def _tools_group(self) -> QGroupBox:
+        form = QFormLayout()
         self.ffmpeg_path = QLineEdit("ffmpeg")
         self.ffprobe_path = QLineEdit("ffprobe")
         ff_row = QHBoxLayout()
@@ -343,21 +424,18 @@ class SettingsPanel(QWidget):
         ff_row.addWidget(ff_browse)
         ff_widget = QWidget()
         ff_widget.setLayout(ff_row)
-        tform.addRow("ffmpeg", ff_widget)
-        tform.addRow("ffprobe", self.ffprobe_path)
-        layout.addWidget(self._group("Tools", tform))
-
-        layout.addStretch(1)
-        return page
+        form.addRow("ffmpeg", ff_widget)
+        form.addRow("ffprobe", self.ffprobe_path)
+        return self._group("Tools", form)
 
     # --------------------------------------------------------------- actions
     def _update_mode_visibility(self) -> None:
         mode = self.mode.currentData()
         tier = mode == "tier"
-        self._mform.setRowVisible(self.target_size, mode == "size")
-        self._qform.setRowVisible(self.preset, tier)
-        self._qform.setRowVisible(self.bpp, tier)
-        self._qform.setRowVisible(self.quality, mode == "quality")
+        self._vform.setRowVisible(self.quality, mode == "quality")
+        self._vform.setRowVisible(self.preset, tier)
+        self._vform.setRowVisible(self.bpp, tier)
+        self._vform.setRowVisible(self.target_size, mode == "size")
 
     def _browse_output_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose output folder")
@@ -371,11 +449,10 @@ class SettingsPanel(QWidget):
 
     # ------------------------------------------------------------- load/save
     def load_from_config(self, config: VeloxConfig) -> None:
-        g, audio, subs, enc, general = (
+        g, audio, subs, general = (
             config.hevc_gpu,
             config.clean_audio,
             config.clean_subs,
-            config.hevc_gpu,
             config.general,
         )
         self.bpp.setValue(g.bits_per_pixel)
@@ -401,6 +478,7 @@ class SettingsPanel(QWidget):
         self.commentary.setChecked(audio.commentary or subs.commentary)
 
         self._set_combo_data(self.encoder, g.encoder)
+        self._set_combo_text(self.container, g.container)
         self.hw_decode.setChecked(g.hardware_decode)
         self.tenbit.setChecked(g.enable_10bit)
         self.spatial_aq.setChecked(g.spatial_aq)
@@ -408,11 +486,11 @@ class SettingsPanel(QWidget):
         self.keep_original.setChecked(general.keep_original)
         self.verify_output.setChecked(general.verify_output)
         self.verify_full_decode.setChecked(general.verify_full_decode)
+        self.verify_full_decode.setEnabled(general.verify_output)
         self.output_dir.setText(general.output_dir or "")
         self.temp_dir.setText(str(general.temp_dir or "source"))
 
         self._set_combo_text(self.target_codec, g.target_codec)
-        self._set_combo_text(self.container, g.container)
         self.min_kbps.setValue(g.min_video_kbps)
         self.max_kbps.setValue(g.max_video_kbps)
         self.cutoff.setValue(g.bitrate_cutoff)
@@ -452,6 +530,7 @@ class SettingsPanel(QWidget):
         config.clean_subs.commentary = self.commentary.isChecked()
 
         g.encoder = self.encoder.currentData()
+        g.container = self.container.currentText()
         g.hardware_decode = self.hw_decode.isChecked()
         g.enable_10bit = self.tenbit.isChecked()
         g.spatial_aq = self.spatial_aq.isChecked()
@@ -463,7 +542,6 @@ class SettingsPanel(QWidget):
         config.general.temp_dir = self.temp_dir.text().strip() or "source"
 
         g.target_codec = self.target_codec.currentText()
-        g.container = self.container.currentText()
         g.min_video_kbps = self.min_kbps.value()
         g.max_video_kbps = self.max_kbps.value()
         g.bitrate_cutoff = self.cutoff.value()

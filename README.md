@@ -106,10 +106,10 @@ appearance (accent colour, dark mode, Liquid Glass), and the app menu has
 - **Toolbar** — Add Files / Add Folder, and Start / Dry Run / Stop.
 - **Files** — a table with **one row per file** (progress, current step, result).
   Several files are processed **in parallel** (`Parallel files`, default 2).
-- **Settings** — Basic and Advanced, left-aligned and scrollable so nothing is
-  cut off: quality preset, bitrate mode, audio (incl. default track),
-  subtitles, encoder, output, and advanced limits / performance / per-step
-  toggles.
+- **Settings** — a sub-sidebar (**Video · Audio · Subtitles · Output ·
+  Advanced**) with one scrollable, left-aligned page per section: quality/size,
+  encoder & container, audio (incl. default track), subtitles, output & safety,
+  and advanced limits / performance / per-step toggles / tools.
 - **Results** — one row per ffmpeg pass with the space it saved, plus a total.
 
 The always-visible status strip shows the current file (x of y), the running

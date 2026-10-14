@@ -17,6 +17,12 @@ _STYLE = """
 #divider {
     background: palette(mid);
 }
+#subnav {
+    outline: 0;
+}
+#subnav::item {
+    padding: 4px 8px;
+}
 #statusStrip {
     border-top: 1px solid palette(mid);
 }
