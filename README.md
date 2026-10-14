@@ -145,41 +145,37 @@ option with comments. Key settings:
 - `standardise_audio.audio_codec = "aac"`, `audio_bitrate_kbps = 256`
   (caps audio so it can't eat the video budget)
 - `hevc_gpu.encoder = "hevc_videotoolbox"` (Apple Silicon)
-- `hevc_gpu.bitrate_mode = "tier"`, `bits_per_pixel = 0.033`
+- `hevc_gpu.bitrate_mode = "quality"`, `quality = 50` (VideoToolbox `-q:v`, 1-100)
 - `hevc_gpu.hardware_decode = true` (VideoToolbox decode)
 
-### One setting for movies *and* series (1080p through 4K)
+### Choosing the size/quality mode
 
-A fixed "1.5 GB per file" target only makes sense for feature films — applying
-it to a 45-minute episode would waste bits. Velox therefore defaults to
-**tier mode**, which sizes the bitrate from the *resolution and framerate*
-(`bits_per_pixel * width * height * fps`) instead of a fixed size. The source
-resolution is never changed, so 4K stays 4K and simply gets ~4x the bitrate of
-1080p:
+The default is **constant quality** via VideoToolbox `-q:v` (Apple Silicon only;
+Velox falls back to tier mode elsewhere). It is the encoder's native quality
+control and gives the best quality per byte — the file size adapts to the
+content, so it works equally for a feature film and a short episode.
 
-| Content (bpp 0.033)    | Bitrate   | Result |
-| ---------------------- | --------- | ------ |
-| 1080p24 feature (2 h)  | ~1.6 Mbps | ~1.5 GB |
-| 1080p24 episode (45 m) | ~1.6 Mbps | ~0.6 GB |
-| 720p24 episode (45 m)  | ~0.7 Mbps | ~0.26 GB |
-| 2160p24 feature (2 h)  | ~6.6 Mbps | ~5.9 GB |
-| 2160p24 episode (45 m) | ~6.6 Mbps | ~2.2 GB |
+- `-q:v` scale is **1–100, higher is better** (there is no `-crf`/`-cq` in
+  VideoToolbox). Recommended range **45–65**; 55–65 is "excellent"
+  (VMAF ~95–98), 45–50 "good" (VMAF ~90–93). The default `50` favours small
+  files. A resolution-aware `-maxrate` ceiling keeps complex scenes in check.
+- Speed is essentially unaffected by `-q:v` (hardware encoding) — the real
+  trade-off is quality vs. file size.
 
-Quality stays consistent because every file gets the same bits-per-pixel.
-Change one number to shift the whole library:
+The alternatives:
 
-- `bits_per_pixel = 0.03` – smaller files
-- `bits_per_pixel = 0.045` – more quality
+- `bitrate_mode = "tier"` — resolution & framerate aware ABR
+  (`bits_per_pixel * width * height * fps`), i.e. a **predictable size** that
+  scales for movies and episodes:
 
-The other modes:
+  | Content (bpp 0.033)    | Bitrate   | Result |
+  | ---------------------- | --------- | ------ |
+  | 1080p24 feature (2 h)  | ~1.6 Mbps | ~1.5 GB |
+  | 1080p24 episode (45 m) | ~1.6 Mbps | ~0.6 GB |
+  | 2160p24 feature (2 h)  | ~6.6 Mbps | ~5.9 GB |
 
-- `bitrate_mode = "size"` with `target_size_mb = 1500` — fixed size per file,
-  ideal when you want a specific size for a movie. Override per run with
-  `--target-size-mb 1500` (or `--mode size`).
-- `bitrate_mode = "quality"` — constant quality via VideoToolbox `-q:v`
-  (Apple Silicon only; Velox falls back to tier mode elsewhere), with a
-  resolution-aware `-maxrate` ceiling. Usually the best quality per byte, but
-  the size is not predictable.
+- `bitrate_mode = "size"` with `target_size_mb = 1500` — fixed size per file.
+  Override per run with `--target-size-mb 1500` (or `--mode size`).
 
 Velox never encodes above the source bitrate, so already-small files are not
 bloated, and the `file_size_check` step guards against surprises

@@ -50,9 +50,9 @@ PLUGIN_LABELS = {
 }
 
 BITRATE_MODES = [
-    ("Automatic — scales with resolution (recommended)", "tier"),
+    ("Constant quality (recommended)", "quality"),
+    ("Automatic — predictable size", "tier"),
     ("Target file size", "size"),
-    ("Constant quality", "quality"),
 ]
 
 # label -> stored value for the "Default audio track" selector
@@ -159,16 +159,21 @@ class SettingsPanel(QWidget):
         for name, label in PRESET_LABELS:
             self.preset.addItem(label, name)
         self.preset.setToolTip(
-            "Overall quality/size. Each preset maps to a bits-per-pixel value.\n"
-            "Smaller = smaller files, High = better quality."
+            "Overall size/quality preset for the 'Automatic' (tier) mode.\n"
+            "Each preset maps to a bits-per-pixel value."
         )
         self.bpp = _dspin(0.005, 0.3, QUALITY_PRESETS[DEFAULT_PRESET], 4, " bpp")
         self.bpp.setToolTip(
-            "Bits per pixel per frame. Higher = better quality and bigger files.\n"
-            "Only used in the 'Automatic' bitrate mode."
+            "Bits per pixel per frame (Automatic mode). Higher = better quality."
+        )
+        self.quality = _spin(1, 100, 50)
+        self.quality.setToolTip(
+            "Constant quality (-q:v) for Apple Silicon VideoToolbox.\n"
+            "1-100, higher is better. Recommended 45-65 (50 = good, smaller files)."
         )
         qform.addRow("Preset", self.preset)
         qform.addRow("Target bits per pixel", self.bpp)
+        qform.addRow("Constant quality", self.quality)
         layout.addWidget(self._group("Quality", qform))
         self._qform = qform
 
@@ -178,12 +183,9 @@ class SettingsPanel(QWidget):
         for label, value in BITRATE_MODES:
             self.mode.addItem(label, value)
         self.target_size = _dspin(1, 200_000, 1500, 0, " MiB")
-        self.target_size.setToolTip("Desired output size per file (movies).")
-        self.quality = _spin(0, 100, 55)
-        self.quality.setToolTip("Constant quality for Apple Silicon VideoToolbox (higher = better).")
+        self.target_size.setToolTip("Desired output size per file.")
         mform.addRow("Mode", self.mode)
         mform.addRow("Target size", self.target_size)
-        mform.addRow("Constant quality", self.quality)
         self.mode.currentIndexChanged.connect(self._update_mode_visibility)
         layout.addWidget(self._group("Bitrate", mform))
         self._mform = mform
@@ -341,9 +343,9 @@ class SettingsPanel(QWidget):
         mode = self.mode.currentData()
         tier = mode == "tier"
         self._mform.setRowVisible(self.target_size, mode == "size")
-        self._mform.setRowVisible(self.quality, mode == "quality")
+        self._qform.setRowVisible(self.preset, tier)
         self._qform.setRowVisible(self.bpp, tier)
-        self.preset.setEnabled(tier)
+        self._qform.setRowVisible(self.quality, mode == "quality")
 
     def _browse_output_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose output folder")

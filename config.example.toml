@@ -88,12 +88,13 @@ target_codec = "hevc"
 encoder = "hevc_videotoolbox"
 
 # How the video bitrate is chosen.
-#   "tier"    -> resolution & framerate aware (bits_per_pixel * W * H * fps).
-#                One setting for everything: a 2h movie ~1.5 GB, a 45min
-#                episode ~0.6 GB, consistent quality. (default, recommended)
-#   "size"    -> fixed output size per file (target_size_mb), e.g. for movies.
-#   "quality" -> constant quality (Apple Silicon -q:v) with a size ceiling.
-bitrate_mode = "tier"
+#   "quality" -> constant quality (Apple Silicon VideoToolbox -q:v) with a
+#                resolution-aware ceiling. Best quality per byte; size adapts.
+#                (default)
+#   "tier"    -> resolution & framerate aware (bits_per_pixel * W * H * fps),
+#                i.e. predictable sizes.
+#   "size"    -> fixed output size per file (target_size_mb).
+bitrate_mode = "quality"
 
 # --- tier mode -------------------------------------------------------------
 # Bits per pixel per frame. 0.03 = small, 0.04-0.05 = more quality.
@@ -108,8 +109,9 @@ size_overhead_percent = 2.0
 fallback_audio_kbps = 256
 
 # --- quality mode ----------------------------------------------------------
-# VideoToolbox constant quality, 0-100 (higher = better/larger).
-quality = 55
+# Apple Silicon VideoToolbox constant quality (-q:v): 1-100, higher is better.
+# Recommended 45-65 (55-65 excellent, 45-50 good). 50 = good size/quality.
+quality = 50
 
 # Clamp the computed video bitrate (kbps). Upper clamp leaves room for 4K/8K.
 min_video_kbps = 300

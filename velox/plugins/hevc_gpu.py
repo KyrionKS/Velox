@@ -6,21 +6,20 @@ Ported from arabcoders' ``Tdarr_Plugin_AC_HEVC_GPU`` (v1.42) and tuned for
 Key adaptations over the Tdarr original:
 
 * **Bitrate modes**:
-  - ``tier`` (default): resolution & framerate aware
-    (``bits_per_pixel * W * H * fps``) — one setting that scales correctly for
-    both movies and series/episodes.
+  - ``quality`` (default): constant quality (Apple Silicon VideoToolbox
+    ``-q:v``, 45-65 recommended) with a resolution-aware ceiling — best quality
+    per byte, size adapts to the content.
+  - ``tier``: resolution & framerate aware (``bits_per_pixel * W * H * fps``) —
+    a predictable size, scales for both movies and series/episodes.
   - ``size``: fixed output size per file.
-  - ``quality``: constant quality (Apple Silicon VideoToolbox ``-q:v``) with a
-    resolution-aware ceiling.
-* **No downscaling**: the source resolution is kept (up to 4K/8K); the tier
-  bitrate scales with the pixel count, so a 4K source gets ~4x the bitrate of
-  1080p automatically.
+* **No downscaling**: the source resolution is kept (up to 4K/8K).
 * **Hardware decode** (VideoToolbox) on Apple Silicon.
 * **Encoder probing** picks the first working GPU encoder in the original order
   (nvenc -> amf -> qsv -> videotoolbox -> vaapi); the default configuration pins
   ``hevc_videotoolbox`` for Apple Silicon.
-* **Encoder-aware flags**: VideoToolbox on Apple Silicon supports constant
-  quality (``-q:v``) and spatial AQ, but not the NVENC-only ``-rc-lookahead``.
+* **Encoder-aware flags**: VideoToolbox supports ``-q:v`` and ``-spatial_aq`` but
+  ignores ``-bufsize`` and has no ``-temporal_aq``; the NVENC-only
+  ``-rc-lookahead``/``-spatial_aq:v`` flags are not used for it.
 * Optional CPU fallback (``allow_cpu_fallback``) instead of hard-failing.
 """
 
@@ -109,10 +108,10 @@ class HevcGpuPlugin(Plugin):
             result.note("☒ File is not a video.")
             return result
 
-        mode = str(getattr(self.config, "bitrate_mode", "tier") or "tier").lower()
+        mode = str(getattr(self.config, "bitrate_mode", "quality") or "quality").lower()
         if mode not in BITRATE_MODES:
-            result.note(f"☒ Unknown bitrate_mode {mode!r}, falling back to tier.")
-            mode = "tier"
+            result.note(f"☒ Unknown bitrate_mode {mode!r}, falling back to quality.")
+            mode = "quality"
 
         # Constant quality (VideoToolbox -q:v) is only available on Apple
         # Silicon; fall back to tier mode on anything else.
@@ -127,10 +126,19 @@ class HevcGpuPlugin(Plugin):
         # -------------------------------------------------- target bitrate
         target_bitrate: int | None = None
         minimum_bitrate = maximum_bitrate = 0
+        cutoff = int(getattr(self.config, "bitrate_cutoff", 0) or 0)
 
         if mode == "quality":
-            quality = int(getattr(self.config, "quality", 55))
-            result.note(f"☑ Quality mode: constant quality {quality}")
+            quality = int(getattr(self.config, "quality", 50))
+            # Constant quality has no target bitrate, so the cutoff applies to
+            # the source: skip files that are already small.
+            if cutoff and current_bitrate and current_bitrate < cutoff:
+                result.note(
+                    f"☑ Source video bitrate {current_bitrate}k is below the cutoff of "
+                    f"{cutoff}k. Skipping this plugin."
+                )
+                return result
+            result.note(f"☑ Quality mode: constant quality {quality} (VideoToolbox -q:v)")
         else:
             if mode == "size":
                 if duration <= 0:
@@ -153,7 +161,6 @@ class HevcGpuPlugin(Plugin):
                 result.note("☒ Target bitrate could not be calculated. Skipping this plugin.")
                 return result
 
-            cutoff = int(getattr(self.config, "bitrate_cutoff", 0) or 0)
             if cutoff and cutoff >= target_bitrate:
                 result.note(
                     f"☑ File target bitrate {target_bitrate}k is below the set cutoff of "
@@ -535,7 +542,10 @@ class HevcGpuPlugin(Plugin):
     def _bitrate_mode_args(
         self, encoder: str, target: int, minimum: int, maximum: int
     ) -> list[str]:
-        if "videotoolbox" in encoder or "qsv" in encoder or "vaapi" in encoder:
+        if "videotoolbox" in encoder:
+            # VideoToolbox ignores -bufsize (only -maxrate maps to DataRateLimits).
+            return ["-b:v", f"{target}k", "-maxrate", f"{maximum}k"]
+        if "qsv" in encoder or "vaapi" in encoder:
             return ["-b:v", f"{target}k", "-maxrate", f"{maximum}k", "-bufsize", f"{target * 2}k"]
         if "amf" in encoder:
             return [
@@ -562,18 +572,20 @@ class HevcGpuPlugin(Plugin):
         ]
 
     def _quality_mode_args(self, encoder: str, ceiling: int = 0) -> list[str]:
-        quality = int(getattr(self.config, "quality", 55))
-        cap_args = ["-maxrate", f"{ceiling}k", "-bufsize", f"{ceiling * 2}k"] if ceiling > 0 else []
+        quality = int(getattr(self.config, "quality", 50))
+        maxrate = ["-maxrate", f"{ceiling}k"] if ceiling > 0 else []
+        bufsize = ["-bufsize", f"{ceiling * 2}k"] if ceiling > 0 else []
         if "videotoolbox" in encoder:
-            # Constant quality is only available on Apple Silicon.
-            return ["-q:v", str(quality), *cap_args]
+            # Constant quality (-q:v, 1-100) is only available on Apple Silicon.
+            # VideoToolbox ignores -bufsize.
+            return ["-q:v", str(quality), *maxrate]
         if "nvenc" in encoder:
-            return ["-cq:v", str(quality), *cap_args]
+            return ["-cq:v", str(quality), *maxrate, *bufsize]
         if "qsv" in encoder:
-            return ["-global_quality", str(quality), *cap_args]
+            return ["-global_quality", str(quality), *maxrate, *bufsize]
         if "vaapi" in encoder:
-            return ["-qp", str(quality), *cap_args]
+            return ["-qp", str(quality), *maxrate, *bufsize]
         if "amf" in encoder:
-            return ["-rc", "cqp", "-qp_i", str(quality), "-qp_p", str(quality), *cap_args]
+            return ["-rc", "cqp", "-qp_i", str(quality), "-qp_p", str(quality), *maxrate, *bufsize]
         preset = str(getattr(self.config, "cpu_preset", "medium") or "medium")
-        return ["-preset", preset, "-crf", str(quality), *cap_args]
+        return ["-preset", preset, "-crf", str(quality), *maxrate, *bufsize]

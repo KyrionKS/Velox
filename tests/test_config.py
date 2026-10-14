@@ -17,7 +17,8 @@ def test_defaults_match_documented_values():
     assert config.standardise_audio.audio_codec == "aac"
     assert config.hevc_gpu.container == "mkv"
     assert config.hevc_gpu.encoder == "hevc_videotoolbox"
-    assert config.hevc_gpu.bitrate_mode == "tier"
+    assert config.hevc_gpu.bitrate_mode == "quality"
+    assert config.hevc_gpu.quality == 50
     assert config.hevc_gpu.bits_per_pixel == 0.033
     assert config.hevc_gpu.target_size_mb == 1500.0
     assert config.hevc_gpu.enable_10bit is True

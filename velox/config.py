@@ -126,15 +126,14 @@ class HevcGpuConfig(PluginConfigBase):
     encoder: str = "hevc_videotoolbox"
 
     # How the video bitrate is chosen:
-    #   "tier"    -> resolution & framerate aware (bits_per_pixel * W * H * fps).
-    #                One setting for everything: a 2h movie becomes ~1.5 GB, a
-    #                45min episode ~0.6 GB, with consistent quality. (default)
-    #   "size"    -> fixed output size per file (target_size_mb). Good when you
-    #                know exactly how big a movie should be.
-    #   "quality" -> constant quality (Apple Silicon VideoToolbox -q:v, NVENC
-    #                -cq, x265 -crf) with a resolution-aware bitrate ceiling.
-    #                Best quality per byte; size is not guaranteed.
-    bitrate_mode: str = "tier"
+    #   "quality" -> constant quality (Apple Silicon VideoToolbox -q:v / NVENC
+    #                -cq / x265 -crf) with a resolution-aware ceiling. Best
+    #                quality per byte; size adapts to the content. (default)
+    #   "tier"    -> resolution & framerate aware (bits_per_pixel * W * H * fps),
+    #                i.e. a predictable size: a 2h movie ~1.5 GB, a 45min
+    #                episode ~0.6 GB.
+    #   "size"    -> fixed output size per file (target_size_mb).
+    bitrate_mode: str = "quality"
 
     # --- tier mode ---------------------------------------------------------
     # Bits per pixel per frame. 0.03 = small, 0.04-0.05 = more quality.
@@ -150,7 +149,12 @@ class HevcGpuConfig(PluginConfigBase):
     fallback_audio_kbps: int = 256
 
     # --- quality mode ------------------------------------------------------
-    quality: int = 55
+    # Apple Silicon VideoToolbox constant-quality (-q:v), 1-100, higher is
+    # better. Recommended range 45-65: 55-65 = excellent (VMAF ~95-98),
+    # 45-50 = good (VMAF ~90-93). 50 is a good size/quality compromise.
+    # NOTE: other encoders use different scales (NVENC -cq, x265 -crf where a
+    # *lower* value is better), so this value only makes sense for VideoToolbox.
+    quality: int = 50
 
     # Clamp the computed video bitrate (kbps). The upper clamp leaves room for
     # 4K/8K so high resolutions are not artificially limited.

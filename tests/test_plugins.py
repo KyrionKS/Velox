@@ -368,7 +368,9 @@ def _bitrate_of(result) -> str:
 
 def test_hevc_gpu_tier_bitrate_for_1080p24():
     # 0.033 bpp * 1920 * 1080 * 24fps / 1000 ~= 1642 kbps
-    result = HevcGpuPlugin(VeloxConfig().hevc_gpu).run(
+    config = VeloxConfig().hevc_gpu
+    config.bitrate_mode = "tier"
+    result = HevcGpuPlugin(config).run(
         _movie(), make_ctx(_movie(), available={"hevc_videotoolbox"})
     )
     assert result.process_file
@@ -377,16 +379,20 @@ def test_hevc_gpu_tier_bitrate_for_1080p24():
 
 
 def test_hevc_gpu_tier_scales_with_resolution():
-    hd = HevcGpuPlugin(VeloxConfig().hevc_gpu)
-    high = hd.run(_movie(), make_ctx(_movie(), available={"hevc_videotoolbox"}))
+    config = VeloxConfig().hevc_gpu
+    config.bitrate_mode = "tier"
+    plugin = HevcGpuPlugin(config)
+    high = plugin.run(_movie(), make_ctx(_movie(), available={"hevc_videotoolbox"}))
     low_media = _movie(width=1280, height=720)
-    low = hd.run(low_media, make_ctx(low_media, available={"hevc_videotoolbox"}))
+    low = plugin.run(low_media, make_ctx(low_media, available={"hevc_videotoolbox"}))
     assert int(_bitrate_of(high).rstrip("k")) > int(_bitrate_of(low).rstrip("k"))
 
 
 def test_hevc_gpu_tier_is_independent_of_duration():
     # Same resolution/fps -> same bitrate, regardless of how long the file is.
-    plugin = HevcGpuPlugin(VeloxConfig().hevc_gpu)
+    config = VeloxConfig().hevc_gpu
+    config.bitrate_mode = "tier"
+    plugin = HevcGpuPlugin(config)
     short = make_media([vstream(0, codec="h264", bit_rate="9000000", width=1920, height=1080), astream(1, bitrate=256_000)], duration=1500.0)
     long = make_media([vstream(0, codec="h264", bit_rate="9000000", width=1920, height=1080), astream(1, bitrate=256_000)], duration=7200.0)
     assert _bitrate_of(plugin.run(short, make_ctx(short, available={"hevc_videotoolbox"}))) == \
@@ -423,12 +429,34 @@ def test_hevc_gpu_no_scale_filter_for_4k():
 
 def test_hevc_gpu_tier_scales_to_4k():
     # 0.033 bpp * 3840 * 2160 * 24fps / 1000 ~= 6569 kbps (~4x of 1080p).
+    config = VeloxConfig().hevc_gpu
+    config.bitrate_mode = "tier"
     media = _movie(width=3840, height=2160)
-    result = HevcGpuPlugin(VeloxConfig().hevc_gpu).run(
+    result = HevcGpuPlugin(config).run(
         media, make_ctx(media, available={"hevc_videotoolbox"})
     )
     kbps = int(_bitrate_of(result).rstrip("k"))
     assert 6500 <= kbps <= 6650
+
+
+def test_hevc_gpu_default_is_constant_quality(monkeypatch):
+    import platform as platform_mod
+
+    monkeypatch.setattr(platform_mod, "system", lambda: "Darwin")
+    monkeypatch.setattr(platform_mod, "machine", lambda: "arm64")
+    config = VeloxConfig().hevc_gpu
+    assert config.bitrate_mode == "quality"
+    assert config.quality == 50
+
+    media = _movie()
+    result = HevcGpuPlugin(config).run(
+        media, make_ctx(media, available={"hevc_videotoolbox"})
+    )
+    assert result.process_file
+    assert result.output_args[result.output_args.index("-q:v") + 1] == "50"
+    assert "-b:v" not in result.output_args
+    assert "-bufsize" not in result.output_args  # VideoToolbox ignores it
+    assert "-spatial_aq" in result.output_args
 
 
 
