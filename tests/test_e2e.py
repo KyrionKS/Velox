@@ -558,6 +558,25 @@ def test_verify_deep_decode_passes(tmp_path: Path):
     assert report.modified
 
 
+def test_read_only_directory_is_handled(tmp_path: Path):
+    if os.geteuid() == 0:
+        pytest.skip("running as root; file permissions are not enforced")
+
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    mode = tmp_path.stat().st_mode
+
+    os.chmod(tmp_path, 0o555)
+    try:
+        report = Pipeline(_no_backup_config()).process(source)
+    finally:
+        os.chmod(tmp_path, mode)
+
+    assert not report.ok  # permission error is reported, not raised
+    assert report.error
+    assert source.exists()
+
+
 
 
 

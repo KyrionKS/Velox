@@ -356,7 +356,7 @@ class Pipeline:
             report.cancelled = True
             report.error = str(exc)
             self.log.warning("■ %s: %s", source.name, exc)
-        except VeloxError as exc:
+        except (VeloxError, OSError) as exc:
             report.error = str(exc)
             self.log.error("✗ %s: %s", source.name, exc)
             observer.on_error(str(exc))
