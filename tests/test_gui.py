@@ -164,3 +164,36 @@ def test_status_strip_reflects_progress(qapp, tmp_path, monkeypatch):
     assert window.overall_bar.value() == 500
     assert "50%" in window.count_label.text()
 
+
+def test_status_line_aggregates_parallel_files(qapp, tmp_path, monkeypatch):
+    """With several files at once the status line aggregates instead of flickering."""
+    import velox.gui.main_window as mw
+    from velox.gui.main_window import MainWindow
+    from velox.pipeline import RunReport
+
+    config = VeloxConfig()
+    monkeypatch.setattr(mw, "load_user_config", lambda: config)
+    monkeypatch.setattr(mw, "user_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setattr(MainWindow, "_check_ffmpeg", lambda self: None)
+
+    window = MainWindow()
+    a, b = "/tmp/A.mkv", "/tmp/B.mkv"
+    window._add_paths([a, b])
+
+    # one active file -> its own detail
+    window._on_file_started(a, "summary")
+    window._on_file_pass(a, "Encode Video")
+    assert "A.mkv" in window.status_label.text()
+
+    # a second file starts -> aggregate (no flicker between the two)
+    window._on_file_started(b, "summary")
+    window._on_file_pass(b, "Clean Audio Tracks")
+    window._on_file_progress(a, 0.5)
+    assert window.status_label.text() == "Processing 2 files…"
+
+    # one finishes -> back to the remaining file's detail
+    window._on_file_finished(
+        RunReport(source=Path(b), final_path=Path(b), original_bytes=1, final_bytes=1)
+    )
+    assert "A.mkv" in window.status_label.text()
+

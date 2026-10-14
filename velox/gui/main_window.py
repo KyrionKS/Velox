@@ -101,7 +101,9 @@ class MainWindow(QMainWindow):
         self._bars: dict[str, QProgressBar] = {}
         self._step: dict[str, str] = {}
         self._progress: dict[str, float] = {}
+        self._status_text: dict[str, str] = {}
         self._pass_started: dict[str, float | None] = {}
+        self._active: set[str] = set()
 
         self._elapsed_timer = QTimer(self)
         self._elapsed_timer.setInterval(1000)
@@ -505,6 +507,8 @@ class MainWindow(QMainWindow):
         self._files_total = len(files)
         self._files_done = 0
         self._progress = {path: 0.0 for path in files}
+        self._status_text = {}
+        self._active = set()
         self._run_started_at = time.monotonic()
         self.overall_bar.setRange(0, 1000)
         self.overall_bar.setValue(0)
@@ -580,9 +584,11 @@ class MainWindow(QMainWindow):
         self._step[path] = "Analysing streams…"
         self._pass_started[path] = None
         self._progress[path] = 0.0
+        self._active.add(path)
         self._set_overall()
         self._set_step(path, "Analysing streams…")
-        self.status_label.setText(f"{Path(path).name} — analysing…")
+        self._status_text[path] = f"{Path(path).name} — analysing…"
+        self._update_status_line()
         bar = self._bar_of(path)
         if bar is not None:
             bar.setRange(0, 0)
@@ -592,7 +598,8 @@ class MainWindow(QMainWindow):
         self._step[path] = text
         self._pass_started[path] = None
         self._set_step(path, text)
-        self.status_label.setText(f"{Path(path).name} · {text}")
+        self._status_text[path] = f"{Path(path).name} · {text}"
+        self._update_status_line()
         bar = self._bar_of(path)
         if bar is not None:
             bar.setRange(0, 0)
@@ -601,7 +608,8 @@ class MainWindow(QMainWindow):
         self._step[path] = text
         self._pass_started[path] = time.monotonic()
         self._set_step(path, text)
-        self.status_label.setText(f"{Path(path).name} · {text}")
+        self._status_text[path] = f"{Path(path).name} · {text}"
+        self._update_status_line()
         bar = self._bar_of(path)
         if bar is not None:
             bar.setRange(0, 100)
@@ -626,7 +634,19 @@ class MainWindow(QMainWindow):
         else:
             text = f"{step}  ·  {int(fraction * 100)}%"
         self._set_step(path, text)
-        self.status_label.setText(f"{Path(path).name} · {text}")
+        self._status_text[path] = f"{Path(path).name} · {text}"
+        self._update_status_line()
+
+    def _update_status_line(self) -> None:
+        """Show one file's detail, or an aggregate when several run at once."""
+        active = list(self._active)
+        if len(active) == 1:
+            path = active[0]
+            self.status_label.setText(
+                self._status_text.get(path) or Path(path).name
+            )
+        elif len(active) > 1:
+            self.status_label.setText(f"Processing {len(active)} files…")
 
     def _on_pass_finished(self, path: str, event: PassEvent) -> None:
         self.results.add_pass(Path(path).name, event)
@@ -637,6 +657,7 @@ class MainWindow(QMainWindow):
         self.results.add_report(report)
         self._files_done += 1
         self._progress[path] = 1.0
+        self._active.discard(path)
         self._set_overall()
         self._update_elapsed()
 
@@ -668,6 +689,7 @@ class MainWindow(QMainWindow):
             self._set_step(path, "Nothing to change")
             self._set_result(path, "unchanged")
             self._log(f"= {Path(path).name}: nothing to change")
+        self._update_status_line()
 
     def _on_failed(self, message: str) -> None:
         self._log(f"✗ {message}")
