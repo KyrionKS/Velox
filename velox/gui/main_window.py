@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QToolBar,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -84,6 +83,7 @@ class MainWindow(QMainWindow):
         self._files_total = 0
         self._files_done = 0
         self._run_started_at: float | None = None
+        self._log_visible = False
         self._qsettings = QSettings("Velox", "Velox")
 
         # per-file state, keyed by the full path
@@ -142,7 +142,10 @@ class MainWindow(QMainWindow):
         self.act_add_folder.setShortcut(QKeySequence("Ctrl+Shift+O"))
         self.act_add_folder.triggered.connect(self._add_folder)
 
-        self.act_dry = QAction("Dry Run", self)
+        self.act_dry = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton), "Dry Run", self
+        )
+        self.act_dry.setToolTip("Preview the plan without changing any files")
         self.act_dry.triggered.connect(lambda: self._start(dry_run=True))
 
         self.act_start = QAction(
@@ -303,13 +306,14 @@ class MainWindow(QMainWindow):
         self.overall_bar.setTextVisible(False)
         layout.addWidget(self.overall_bar)
 
-        self.details_button = QToolButton()
-        self.details_button.setText("Details")
-        self.details_button.setCheckable(True)
-        self.details_button.setArrowType(Qt.ArrowType.RightArrow)
-        self.details_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.details_button.toggled.connect(self._toggle_details)
-        layout.addWidget(self.details_button)
+        self.details_button = QPushButton("Show log")
+        self.details_button.setFlat(True)
+        self.details_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.details_button.clicked.connect(self._toggle_details)
+        details_row = QHBoxLayout()
+        details_row.addWidget(self.details_button)
+        details_row.addStretch(1)
+        layout.addLayout(details_row)
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -322,11 +326,10 @@ class MainWindow(QMainWindow):
     def _on_nav_changed(self, row: int) -> None:
         self.stack.setCurrentIndex(row)
 
-    def _toggle_details(self, checked: bool) -> None:
-        self.log.setVisible(checked)
-        self.details_button.setArrowType(
-            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
-        )
+    def _toggle_details(self) -> None:
+        self._log_visible = not self._log_visible
+        self.log.setVisible(self._log_visible)
+        self.details_button.setText("Hide log" if self._log_visible else "Show log")
 
     # ------------------------------------------------------------ file table
     def _add_paths(self, paths: list[str]) -> None:
