@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         self._rows: dict[str, int] = {}
         self._bars: dict[str, QProgressBar] = {}
         self._step: dict[str, str] = {}
+        self._progress: dict[str, float] = {}
         self._pass_started: dict[str, float | None] = {}
 
         self._elapsed_timer = QTimer(self)
@@ -468,8 +469,9 @@ class MainWindow(QMainWindow):
         self.log.clear()
         self._files_total = len(files)
         self._files_done = 0
+        self._progress = {path: 0.0 for path in files}
         self._run_started_at = time.monotonic()
-        self.overall_bar.setRange(0, self._files_total)
+        self.overall_bar.setRange(0, 1000)
         self.overall_bar.setValue(0)
         self.status_label.setText("Starting…")
         self.count_label.setText(f"0 of {self._files_total}")
@@ -511,22 +513,42 @@ class MainWindow(QMainWindow):
         self.act_dry.setEnabled(not running)
         self.act_stop.setEnabled(running)
 
+    def _overall_fraction(self) -> float:
+        if not self._files_total:
+            return 0.0
+        if self._progress:
+            done = sum(self._progress.values())
+        else:
+            done = float(self._files_done)
+        return max(0.0, min(1.0, done / self._files_total))
+
+    def _set_overall(self) -> None:
+        if self.overall_bar.maximum() != 1000:
+            self.overall_bar.setRange(0, 1000)
+        self.overall_bar.setValue(int(self._overall_fraction() * 1000))
+
     def _update_elapsed(self) -> None:
         if self._run_started_at is None:
             return
         elapsed = _fmt_duration(time.monotonic() - self._run_started_at)
-        self.count_label.setText(f"{self._files_done} of {self._files_total}  ·  {elapsed}")
+        pct = int(self._overall_fraction() * 100)
+        self.count_label.setText(
+            f"{self._files_done} of {self._files_total}  ·  {pct}%  ·  {elapsed}"
+        )
 
     # --------------------------------------------------------------- signals
     def _on_run_started(self, total: int) -> None:
-        self.overall_bar.setRange(0, max(1, total))
+        self.overall_bar.setRange(0, 1000)
         self.overall_bar.setValue(0)
         self._update_elapsed()
 
     def _on_file_started(self, path: str, summary: str) -> None:
         self._step[path] = "Analysing streams…"
         self._pass_started[path] = None
+        self._progress[path] = 0.0
+        self._set_overall()
         self._set_step(path, "Analysing streams…")
+        self.status_label.setText(f"{Path(path).name} — analysing…")
         bar = self._bar_of(path)
         if bar is not None:
             bar.setRange(0, 0)
@@ -536,6 +558,7 @@ class MainWindow(QMainWindow):
         self._step[path] = text
         self._pass_started[path] = None
         self._set_step(path, text)
+        self.status_label.setText(f"{Path(path).name} · {text}")
         bar = self._bar_of(path)
         if bar is not None:
             bar.setRange(0, 0)
@@ -544,6 +567,7 @@ class MainWindow(QMainWindow):
         self._step[path] = text
         self._pass_started[path] = time.monotonic()
         self._set_step(path, text)
+        self.status_label.setText(f"{Path(path).name} · {text}")
         bar = self._bar_of(path)
         if bar is not None:
             bar.setRange(0, 100)
@@ -552,6 +576,8 @@ class MainWindow(QMainWindow):
 
     def _on_file_progress(self, path: str, fraction: float) -> None:
         fraction = max(0.0, min(1.0, fraction))
+        self._progress[path] = fraction
+        self._set_overall()
         bar = self._bar_of(path)
         if bar is not None:
             if bar.maximum() == 0:
@@ -562,9 +588,11 @@ class MainWindow(QMainWindow):
         if started is not None and fraction > 0.02:
             elapsed = time.monotonic() - started
             remaining = elapsed * (1.0 - fraction) / fraction
-            self._set_step(path, f"{step}  ·  {int(fraction * 100)}%  ·  ~{_fmt_duration(remaining)} left")
+            text = f"{step}  ·  {int(fraction * 100)}%  ·  ~{_fmt_duration(remaining)} left"
         else:
-            self._set_step(path, f"{step}  ·  {int(fraction * 100)}%")
+            text = f"{step}  ·  {int(fraction * 100)}%"
+        self._set_step(path, text)
+        self.status_label.setText(f"{Path(path).name} · {text}")
 
     def _on_pass_finished(self, path: str, event: PassEvent) -> None:
         self.results.add_pass(Path(path).name, event)
@@ -574,7 +602,8 @@ class MainWindow(QMainWindow):
         path = str(report.source)
         self.results.add_report(report)
         self._files_done += 1
-        self.overall_bar.setValue(self._files_done)
+        self._progress[path] = 1.0
+        self._set_overall()
         self._update_elapsed()
 
         bar = self._bar_of(path)
@@ -618,6 +647,8 @@ class MainWindow(QMainWindow):
             "Finished." if not failed else f"Finished with {len(failed)} error(s)."
         )
         self.count_label.setText(f"{self._files_done} of {self._files_total}")
+        self.overall_bar.setRange(0, 1000)
+        self.overall_bar.setValue(1000)
         self._log(f"Done. {len(reports)} file(s), {len(failed)} failed.")
         self.results._update_summary()
         QTimer.singleShot(0, self._release_worker)

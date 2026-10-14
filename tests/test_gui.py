@@ -130,3 +130,37 @@ def test_mainwindow_start_runs_worker_and_finishes(qapp, tmp_path, monkeypatch):
     assert window.results.table.rowCount() >= 1
     assert sample.exists()
 
+
+def test_status_strip_reflects_progress(qapp, tmp_path, monkeypatch):
+    """The bottom bar must move while files are still being processed."""
+    import velox.gui.main_window as mw
+    from velox.gui.main_window import MainWindow
+    from velox.pipeline import RunReport
+
+    config = VeloxConfig()
+    monkeypatch.setattr(mw, "load_user_config", lambda: config)
+    monkeypatch.setattr(mw, "user_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setattr(MainWindow, "_check_ffmpeg", lambda self: None)
+
+    window = MainWindow()
+    a, b = "/tmp/A.mkv", "/tmp/B.mkv"
+    window._add_paths([a, b])
+    window._files_total = 2
+    window._progress = {a: 0.0, b: 0.0}
+    window._run_started_at = time.monotonic()
+    window.overall_bar.setRange(0, 1000)
+    window.status_label.setText("Starting…")
+
+    window._on_file_started(a, "summary")
+    assert "A.mkv" in window.status_label.text()
+
+    window._on_file_pass(a, "Transcoding video (HEVC)")
+    window._on_file_progress(a, 0.5)
+    assert window.overall_bar.value() == 250  # half of one of two files
+    assert "50%" in window.status_label.text()
+
+    report = RunReport(source=Path(a), final_path=Path(a), original_bytes=100, final_bytes=100)
+    window._on_file_finished(report)
+    assert window.overall_bar.value() == 500
+    assert "50%" in window.count_label.text()
+
