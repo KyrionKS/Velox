@@ -148,6 +148,54 @@ def test_clean_audio_tags_untagged_language():
     assert result.remux.metadata == {1: [("language", "eng")]}
 
 
+def test_clean_audio_marks_default_by_language():
+    config = VeloxConfig().clean_audio
+    config.default_audio = "eng"
+    media = make_media([vstream(0), astream(1, lang="eng"), astream(2, lang="und")])
+    result = CleanAudioPlugin(config).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    assert result.remux.dispositions == {1: "default", 2: "0"}
+
+
+def test_clean_audio_marks_first_as_default():
+    config = VeloxConfig().clean_audio
+    config.default_audio = "first"
+    media = make_media([vstream(0), astream(1, lang="und"), astream(2, lang="eng")])
+    result = CleanAudioPlugin(config).run(media, make_ctx(media))
+    assert result.remux is not None
+    assert result.remux.dispositions == {1: "default", 2: "0"}
+
+
+def test_clean_audio_marks_best_channels_as_default():
+    config = VeloxConfig().clean_audio
+    config.default_audio = "best"
+    media = make_media(
+        [vstream(0), astream(1, lang="eng", channels=2), astream(2, lang="und", channels=6)]
+    )
+    result = CleanAudioPlugin(config).run(media, make_ctx(media))
+    assert result.remux is not None
+    assert result.remux.dispositions == {2: "default", 1: "0"}
+
+
+def test_clean_audio_default_audio_without_match_is_noop():
+    config = VeloxConfig().clean_audio
+    config.default_audio = "jpn"  # not present
+    media = make_media([vstream(0), astream(1, lang="eng")])
+    result = CleanAudioPlugin(config).run(media, make_ctx(media))
+    assert not result.process_file
+
+
+def test_clean_audio_default_und_matches_untagged():
+    config = VeloxConfig().clean_audio
+    config.default_audio = "und"
+    media = make_media([vstream(0), astream(1, lang="eng"), astream(2)])  # 2 has no tag
+    result = CleanAudioPlugin(config).run(media, make_ctx(media))
+    assert result.remux is not None
+    assert result.remux.dispositions == {2: "default", 1: "0"}
+
+
+
 # ----------------------------------------------------------------- clean_subs
 def test_clean_subs_removes_unwanted_language():
     media = make_media([vstream(0), sstream(1, lang="eng"), sstream(2, lang="deu")])

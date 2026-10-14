@@ -34,6 +34,7 @@ def test_settings_roundtrip(qapp):
     config.standardise_audio.audio_bitrate_kbps = 128
     config.clean_subs.sdh = False
     config.hevc_gpu.encoder = "libx265"
+    config.clean_audio.default_audio = "eng"
 
     panel.load_from_config(config)
     result = panel.apply_to(VeloxConfig())
@@ -44,6 +45,20 @@ def test_settings_roundtrip(qapp):
     assert result.standardise_audio.audio_bitrate_kbps == 128
     assert result.clean_subs.sdh is False
     assert result.hevc_gpu.encoder == "libx265"
+    assert result.clean_audio.default_audio == "eng"
+
+
+def test_settings_default_audio_presets(qapp):
+    from velox.gui.settings import DEFAULT_AUDIO_PRESETS
+
+    panel = SettingsPanel()
+    for label, value in DEFAULT_AUDIO_PRESETS.items():
+        config = VeloxConfig()
+        config.clean_audio.default_audio = value
+        panel.load_from_config(config)
+        assert panel.default_audio.currentText() == label
+        assert panel.apply_to(VeloxConfig()).clean_audio.default_audio == value
+
 
 
 def test_settings_commentary_applies_to_both(qapp):

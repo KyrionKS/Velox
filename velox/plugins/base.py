@@ -43,6 +43,8 @@ class RemuxPlan:
     bitrates: dict[int, str] = field(default_factory=dict)
     # per-stream metadata, e.g. {3: [("language", "eng")]}
     metadata: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
+    # per-stream disposition, e.g. {3: "default"} or {4: "0"} to clear
+    dispositions: dict[int, str] = field(default_factory=dict)
 
     def merge(self, other: "RemuxPlan") -> None:
         self.drop |= set(other.drop)
@@ -52,6 +54,7 @@ class RemuxPlan:
         self.bitrates.update(other.bitrates)
         for index, items in other.metadata.items():
             self.metadata.setdefault(index, []).extend(items)
+        self.dispositions.update(other.dispositions)
 
     def is_empty(self) -> bool:
         return not (
@@ -60,6 +63,7 @@ class RemuxPlan:
             or self.codecs
             or self.bitrates
             or self.metadata
+            or self.dispositions
         )
 
 

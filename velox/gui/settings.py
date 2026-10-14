@@ -51,6 +51,14 @@ BITRATE_MODES = [
     ("Constant quality", "quality"),
 ]
 
+# label -> stored value for the "Default audio track" selector
+DEFAULT_AUDIO_PRESETS = {
+    "Leave unchanged": "",
+    "First kept track": "first",
+    "Highest channels": "best",
+}
+DEFAULT_AUDIO_REVERSE = {value: label for label, value in DEFAULT_AUDIO_PRESETS.items()}
+
 
 def _spin(minimum: int, maximum: int, value: int, suffix: str = "") -> QSpinBox:
     box = QSpinBox()
@@ -142,9 +150,18 @@ class SettingsPanel(QWidget):
         self.audio_cap = _spin(0, 1536, 256, " kbps")
         self.audio_cap.setSpecialValueText("keep original")
         self.audio_cap.setToolTip("Cap audio bitrate so it cannot eat the video budget. 0 = keep original.")
+        self.default_audio = QComboBox()
+        self.default_audio.setEditable(True)
+        for label in DEFAULT_AUDIO_PRESETS:
+            self.default_audio.addItem(label)
+        self.default_audio.setToolTip(
+            "Which kept audio track becomes the player default.\n"
+            "Pick a preset or type a language code (e.g. eng)."
+        )
         aform.addRow("Keep languages", self.audio_langs)
         aform.addRow("Output codec", self.audio_codec)
         aform.addRow("Bitrate cap", self.audio_cap)
+        aform.addRow("Default track", self.default_audio)
         layout.addWidget(self._group("Audio", aform))
 
         # --- Subtitles ---------------------------------------------------
@@ -299,6 +316,12 @@ class SettingsPanel(QWidget):
         self.audio_langs.setText(audio.language)
         self._set_combo_text(self.audio_codec, config.standardise_audio.audio_codec)
         self.audio_cap.setValue(config.standardise_audio.audio_bitrate_kbps)
+        default_audio = str(audio.default_audio or "")
+        label = DEFAULT_AUDIO_REVERSE.get(default_audio)
+        if label is not None:
+            self.default_audio.setCurrentText(label)
+        else:
+            self.default_audio.setEditText(default_audio)
 
         self.sub_langs.setText(subs.language)
         self.sub_sdh.setChecked(subs.sdh)
@@ -344,6 +367,8 @@ class SettingsPanel(QWidget):
         config.clean_audio.language = self.audio_langs.text().strip() or "eng,und"
         config.standardise_audio.audio_codec = self.audio_codec.currentText()
         config.standardise_audio.audio_bitrate_kbps = self.audio_cap.value()
+        default_text = self.default_audio.currentText().strip()
+        config.clean_audio.default_audio = DEFAULT_AUDIO_PRESETS.get(default_text, default_text)
 
         config.clean_subs.language = self.sub_langs.text().strip() or "eng"
         config.clean_subs.sdh = self.sub_sdh.isChecked()

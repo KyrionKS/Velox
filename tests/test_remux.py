@@ -64,6 +64,19 @@ def test_metadata_uses_output_specifier():
     ]
 
 
+def test_dispositions_use_output_specifier():
+    m = media([v(0), a(1, "eng"), a(2, "und")])
+    plan = RemuxPlan(dispositions={1: "default", 2: "0"})
+    args = Pipeline._build_remux_args(plan, m)
+    assert args == [
+        "-map", "0:0", "-map", "0:1", "-map", "0:2",
+        "-c", "copy",
+        "-disposition:a:0", "default",
+        "-disposition:a:1", "0",
+        "-max_muxing_queue_size", "9999",
+    ]
+
+
 def test_order_is_applied():
     m = media([v(0), a(1), s(2)])
     args = Pipeline._build_remux_args(RemuxPlan(order=[1, 0, 2]), m)

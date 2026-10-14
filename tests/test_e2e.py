@@ -294,6 +294,55 @@ def test_container_change_removes_original(tmp_path: Path):
     assert not source.exists()  # original removed -> no wasted space
 
 
+def _make_two_audio_sample(path: Path) -> None:
+    subprocess.run(
+        [
+            FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=1",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+            "-f", "lavfi", "-i", "sine=frequency=660:duration=1",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac",
+            "-metadata:s:a:0", "language=eng",
+            "-metadata:s:a:1", "language=und",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_default_audio_track_is_marked(tmp_path: Path):
+    import json
+
+    source = tmp_path / "sample.mkv"
+    _make_two_audio_sample(source)
+
+    config = _no_backup_config()
+    config.clean_audio.default_audio = "eng"
+    config.reorder_all_streams.enabled = False
+    config.file_size_check.enabled = False
+    pipeline = Pipeline(config)
+
+    report = pipeline.process(source)
+    assert report.ok, report.error
+    assert report.modified
+
+    info = json.loads(
+        subprocess.run(
+            [FFPROBE, "-v", "error", "-print_format", "json", "-show_streams",
+             str(report.final_path)],
+            capture_output=True, text=True, check=True,
+        ).stdout
+    )
+    audio = [s for s in info["streams"] if s.get("codec_type") == "audio"]
+    assert len(audio) == 2
+    assert audio[0].get("tags", {}).get("language") == "eng"
+    assert audio[0]["disposition"]["default"] == 1
+    assert audio[1]["disposition"]["default"] == 0
+
+
+
 def test_remux_plugins_merge_into_a_single_pass(tmp_path: Path):
     # audio-first file with an unwanted audio track: reorder + clean_audio (+
     # reorder_all_streams) must all fold into ONE ffmpeg pass.

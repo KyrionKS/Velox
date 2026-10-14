@@ -397,6 +397,7 @@ class Pipeline:
             and not plan.codecs
             and not plan.bitrates
             and not plan.metadata
+            and not plan.dispositions
             and (plan.order is None or final == input_indices)
         )
         if unchanged:
@@ -430,6 +431,12 @@ class Pipeline:
             spec = TYPE_SPEC.get(stream_type(by_index[index]), "a")
             for key, value in items:
                 args += [f"-metadata:s:{spec}:{out_index[index]}", f"{key}={value}"]
+
+        for index, value in plan.dispositions.items():
+            if index not in out_index:
+                continue
+            spec = TYPE_SPEC.get(stream_type(by_index[index]), "a")
+            args += [f"-disposition:{spec}:{out_index[index]}", value]
 
         args += ["-max_muxing_queue_size", "9999"]
         return args

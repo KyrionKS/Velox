@@ -52,6 +52,12 @@ commentary = false
 tag_language = ""
 # Tag untitled tracks with their channel layout (e.g. "5.1"). Do not use with mp4.
 tag_title = false
+# Which kept audio track becomes the container/player default track:
+#   ""      -> leave the flags unchanged (default)
+#   "first" -> the first kept audio track
+#   "best"  -> the kept track with the most channels
+#   a language code (e.g. "eng") -> the first kept track in that language
+default_audio = ""
 
 # Tdarr_Plugin_MC93_Migz4CleanSubs
 [plugins.clean_subs]

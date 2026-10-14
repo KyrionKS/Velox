@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..media import AUDIO, MediaInfo, stream_language, stream_title, stream_type
 from .base import PipelineContext, Plugin, PluginResult, RemuxPlan
 
@@ -35,9 +37,11 @@ class CleanAudioPlugin(Plugin):
         commentary = bool(getattr(self.config, "commentary", False))
         tag_language = str(getattr(self.config, "tag_language", "") or "")
         tag_title = bool(getattr(self.config, "tag_title", False))
+        default_audio = str(getattr(self.config, "default_audio", "") or "").strip().lower()
 
         drop: set[int] = set()
         metadata: dict[int, list[tuple[str, str]]] = {}
+        kept_audio: list[dict[str, Any]] = []
         audio_total = len(media.streams_of(AUDIO))
 
         for stream in media.streams:
@@ -70,6 +74,8 @@ class CleanAudioPlugin(Plugin):
                 drop.add(index)
                 continue
 
+            kept_audio.append(stream)
+
             # Tag unknown language.
             if tag_language:
                 if "language" not in tags or "und" in language:
@@ -96,12 +102,42 @@ class CleanAudioPlugin(Plugin):
             result.note("☒ Cancelling plugin otherwise all audio tracks would be removed.")
             return result
 
-        if drop or metadata:
+        # Which kept track should be the default one?
+        dispositions: dict[int, str] = {}
+        if default_audio and kept_audio:
+            chosen = self._pick_default(kept_audio, default_audio)
+            if chosen is not None:
+                for stream in kept_audio:
+                    index = int(stream["index"])
+                    dispositions[index] = "default" if index == chosen else "0"
+                label = stream_language(
+                    next(s for s in kept_audio if int(s["index"]) == chosen)
+                ) or "und"
+                result.note(
+                    f"☒ Marking audio stream {chosen} ({label}) as the default track."
+                )
+
+        if drop or metadata or dispositions:
             result.process_file = True
-            result.remux = RemuxPlan(drop=drop, metadata=metadata)
+            result.remux = RemuxPlan(drop=drop, metadata=metadata, dispositions=dispositions)
             result.requeue = True
         else:
             result.note(
                 "☑ File doesn't contain audio tracks which are unwanted or that require tagging."
             )
         return result
+
+    @staticmethod
+    def _pick_default(kept_audio: list[dict[str, Any]], preference: str) -> int | None:
+        """Return the absolute index of the track that should be default."""
+        if preference == "first":
+            return int(kept_audio[0]["index"])
+        if preference == "best":
+            best = max(kept_audio, key=lambda s: int(s.get("channels") or 0))
+            return int(best["index"])
+        # otherwise treat it as a language code
+        for stream in kept_audio:
+            language = stream_language(stream)
+            if language == preference or (preference == "und" and not language):
+                return int(stream["index"])
+        return None

@@ -131,6 +131,9 @@ See `config.example.toml` for the recommended Apple Silicon setup and every
 option with comments. Key settings:
 
 - `clean_audio.language = "eng,und"`
+- `clean_audio.default_audio = "eng"` — which kept audio track becomes the
+  container/player default (`""` = unchanged, `"first"`, `"best"`, or a
+  language code)
 - `standardise_audio.audio_codec = "aac"`, `audio_bitrate_kbps = 256`
   (caps audio so it can't eat the video budget)
 - `hevc_gpu.encoder = "hevc_videotoolbox"` (Apple Silicon)

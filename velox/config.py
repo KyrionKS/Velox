@@ -87,6 +87,12 @@ class CleanAudioConfig(PluginConfigBase):
     commentary: bool = False
     tag_language: str = ""
     tag_title: bool = False
+    # Which kept audio track becomes the container "default" track.
+    #   ""      -> leave the flags unchanged
+    #   "first" -> the first kept audio track
+    #   "best"  -> the kept track with the most channels
+    #   a 3-letter language code (e.g. "eng") -> the first kept track in it
+    default_audio: str = ""
 
 
 @dataclass
