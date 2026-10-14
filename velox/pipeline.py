@@ -330,6 +330,8 @@ class Pipeline:
 
             if modified and not dry_run:
                 report.final_path = self._commit(current, source)
+                if not self.config.general.keep_original:
+                    self._remove_backup(source)
                 self.log.info("✓ Wrote %s", report.final_path)
             else:
                 report.final_path = source
@@ -492,6 +494,14 @@ class Pipeline:
             os.replace(src, dst)
         except OSError:
             shutil.move(str(src), str(dst))
+
+    def _remove_backup(self, source: Path) -> None:
+        """Delete a leftover ".velox-orig" backup (we only want the new file)."""
+        backup = source.with_name(f"{source.stem}.velox-orig{source.suffix}")
+        try:
+            backup.unlink(missing_ok=True)
+        except OSError:  # pragma: no cover - best effort
+            pass
 
     # --------------------------------------------------------------- commit
     def _commit(self, current: Path, source: Path) -> Path:

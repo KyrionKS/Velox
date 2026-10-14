@@ -13,7 +13,9 @@
 ffmpeg_path = "ffmpeg"
 ffprobe_path = "ffprobe"
 # Keep a backup of the original when replacing it in place.
-keep_original = true
+# false (default) deletes the original after a successful run so only the new,
+# smaller file remains.
+keep_original = false
 # If set, results are written here and the original is never touched.
 output_dir = ""
 # Scratch directory for temporary files.

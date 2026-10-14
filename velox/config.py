@@ -51,8 +51,10 @@ TDARR_IDS = {
 class GeneralConfig:
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
-    # Keep the original file (a backup) instead of deleting/replacing it.
-    keep_original: bool = True
+    # Keep the original file (a ".velox-orig" backup) instead of deleting it.
+    # False (default) frees the space: after a successful run only the new file
+    # remains, and any leftover backup for that file is cleaned up.
+    keep_original: bool = False
     # If set, finished files are written here and the original is never touched.
     output_dir: str | None = None
     # Scratch directory for the temporary files written during processing.

@@ -175,7 +175,11 @@ class SettingsPanel(QWidget):
 
         # --- Output ------------------------------------------------------
         oform = QFormLayout()
-        self.keep_original = QCheckBox("Keep a backup of the original (.velox-orig)")
+        self.keep_original = QCheckBox("Keep the original as a backup (.velox-orig — uses space)")
+        self.keep_original.setToolTip(
+            "Off (recommended): after a successful encode only the new,\n"
+            "smaller file remains. On: a copy of the original is kept next to it."
+        )
         self.output_dir = QLineEdit()
         self.output_dir.setPlaceholderText("(same folder as the source)")
         browse_out = QPushButton("Browse…")

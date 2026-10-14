@@ -9,7 +9,7 @@ from velox.config import VeloxConfig, load_config, save_config
 
 def test_defaults_match_documented_values():
     config = VeloxConfig()
-    assert config.general.keep_original is True
+    assert config.general.keep_original is False
     assert config.general.temp_dir == "source"
     assert config.clean_audio.language == "eng,und"
     assert config.clean_subs.language == "eng"

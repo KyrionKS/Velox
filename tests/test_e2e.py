@@ -113,7 +113,7 @@ def test_end_to_end_clean_and_reorder(tmp_path: Path):
     assert _stream_languages(media) == ["eng"]
     # Video is first.
     assert media.streams[0]["codec_type"] == "video"
-    # Backup created because keep_original defaults to true.
+    # Backup created because _make_pipeline enables keep_original.
     assert (tmp_path / "sample.velox-orig.mkv").exists()
 
 
@@ -238,6 +238,60 @@ def test_no_scratch_files_left_behind(tmp_path: Path):
     report = pipeline.process(source)
     assert report.ok
     assert not list(tmp_path.glob(".velox-*"))
+
+
+def _no_backup_config() -> VeloxConfig:
+    config = VeloxConfig()
+    config.general.ffmpeg_path = FFMPEG  # type: ignore[assignment]
+    config.general.ffprobe_path = FFPROBE  # type: ignore[assignment]
+    config.general.keep_original = False
+    config.hevc_gpu.enabled = False
+    config.standardise_audio.enabled = False
+    return config
+
+
+def test_no_backup_left_by_default(tmp_path: Path):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    pipeline = Pipeline(_no_backup_config())
+
+    report = pipeline.process(source)
+    assert report.ok and report.modified
+    assert not (tmp_path / "sample.velox-orig.mkv").exists()
+    assert not list(tmp_path.glob(".velox-*"))
+
+
+def test_stale_backup_is_cleaned_up(tmp_path: Path):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    stale = tmp_path / "sample.velox-orig.mkv"
+    stale.write_bytes(b"old original")
+
+    report = Pipeline(_no_backup_config()).process(source)
+    assert report.ok
+    assert not stale.exists()
+
+
+def test_container_change_removes_original(tmp_path: Path):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    config = _no_backup_config()
+    config.clean_audio.enabled = False
+    config.clean_subs.enabled = False
+    config.reorder_all_streams.enabled = False
+    config.file_size_check.enabled = False
+    config.hevc_gpu.enabled = True
+    config.hevc_gpu.try_use_gpu = False
+    config.hevc_gpu.cpu_preset = "ultrafast"
+    config.hevc_gpu.container = "mp4"
+    pipeline = Pipeline(config)
+
+    report = pipeline.process(source)
+    assert report.ok, report.error
+    assert report.final_path is not None
+    assert report.final_path.suffix == ".mp4"
+    assert report.final_path.exists()
+    assert not source.exists()  # original removed -> no wasted space
 
 
 def test_remux_plugins_merge_into_a_single_pass(tmp_path: Path):

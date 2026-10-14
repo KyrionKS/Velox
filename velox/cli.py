@@ -66,7 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--no-backup", action="store_true",
-        help="Do not keep a copy of the original file.",
+        help="Do not keep a copy of the original file (this is the default).",
+    )
+    parser.add_argument(
+        "--keep-original", action="store_true",
+        help="Keep a '.velox-orig' backup of the original (uses extra disk space).",
     )
     parser.add_argument(
         "--only", help="Only run these plugin keys (comma separated)."
@@ -189,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
         config.general.temp_dir = args.temp_dir
     if args.no_backup:
         config.general.keep_original = False
+    if args.keep_original:
+        config.general.keep_original = True
     if args.ffmpeg:
         config.general.ffmpeg_path = args.ffmpeg
     if args.ffprobe:

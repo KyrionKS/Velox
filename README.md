@@ -82,11 +82,13 @@ python3 -m velox --output-dir ./out "/path/to/Movie.mkv"
 python3 -m velox --init-config config.toml
 ```
 
-### Safety
+### Safety & disk space
 
-By default Velox replaces the original **in place** but keeps a backup named
-`<name>.velox-orig<ext>`. Use `--no-backup` to skip the backup, or
-`--output-dir DIR` to leave originals completely untouched.
+Velox processes everything in a scratch folder and only touches the original
+once the whole pipeline succeeded. By default the original is then **replaced
+and the backup removed**, so after a successful encode only the new (smaller)
+file remains — no leftovers. Use `--keep-original` to keep a `.velox-orig`
+copy, or `--output-dir DIR` to leave the originals untouched entirely.
 
 ## Desktop app (PySide6)
 
