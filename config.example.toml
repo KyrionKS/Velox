@@ -26,6 +26,11 @@ output_dir = ""
 temp_dir = "source"
 # How many files to process at the same time (1 = sequential).
 concurrency = 2
+# Verify the processed file before replacing the original (parses, has video,
+# same duration). If it fails, the original is kept.
+verify_output = true
+# Also fully decode the output to catch corrupt frames (slower).
+verify_full_decode = false
 # Also process files without a video stream.
 process_non_video = false
 

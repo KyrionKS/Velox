@@ -56,6 +56,12 @@ class GeneralConfig:
     # On Apple Silicon the VideoToolbox engine serialises beyond ~2-3 concurrent
     # transcodes, so 2 is a good default.
     concurrency: int = 2
+    # Verify the processed file (parses, has video, duration matches) before
+    # replacing the original. If verification fails the original is kept.
+    verify_output: bool = True
+    # Also fully decode the output with ffmpeg to catch corrupt frames. Slower:
+    # it reads the whole file once more (expensive on a NAS).
+    verify_full_decode: bool = False
     # Also process files that are not detected as video (default: skip).
     process_non_video: bool = False
 

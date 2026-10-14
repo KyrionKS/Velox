@@ -246,6 +246,16 @@ class SettingsPanel(QWidget):
             "Off (recommended): after a successful encode only the new,\n"
             "smaller file remains. On: a copy of the original is kept next to it."
         )
+        self.verify_output = QCheckBox("Verify output before replacing the original")
+        self.verify_output.setToolTip(
+            "Checks that the result parses, contains video and has the same\n"
+            "duration. If it fails, the original is kept untouched."
+        )
+        self.verify_full_decode = QCheckBox("Deep verification (full decode — slower)")
+        self.verify_full_decode.setToolTip(
+            "Also decode the whole output to catch corrupt frames.\n"
+            "Reads the file once more (expensive on a NAS)."
+        )
         self.output_dir = QLineEdit()
         self.output_dir.setPlaceholderText("(same folder as the source)")
         browse_out = QPushButton("Browse…")
@@ -261,6 +271,8 @@ class SettingsPanel(QWidget):
             "file (on the NAS) so your Mac SSD is never used."
         )
         oform.addRow("", self.keep_original)
+        oform.addRow("", self.verify_output)
+        oform.addRow("", self.verify_full_decode)
         oform.addRow("Output folder", out_widget)
         oform.addRow("Temp folder", self.temp_dir)
         layout.addWidget(self._group("Output", oform))
@@ -394,6 +406,8 @@ class SettingsPanel(QWidget):
         self.spatial_aq.setChecked(g.spatial_aq)
 
         self.keep_original.setChecked(general.keep_original)
+        self.verify_output.setChecked(general.verify_output)
+        self.verify_full_decode.setChecked(general.verify_full_decode)
         self.output_dir.setText(general.output_dir or "")
         self.temp_dir.setText(str(general.temp_dir or "source"))
 
@@ -443,6 +457,8 @@ class SettingsPanel(QWidget):
         g.spatial_aq = self.spatial_aq.isChecked()
 
         config.general.keep_original = self.keep_original.isChecked()
+        config.general.verify_output = self.verify_output.isChecked()
+        config.general.verify_full_decode = self.verify_full_decode.isChecked()
         config.general.output_dir = self.output_dir.text().strip() or None
         config.general.temp_dir = self.temp_dir.text().strip() or "source"
 

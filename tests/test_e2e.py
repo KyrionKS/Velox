@@ -523,6 +523,42 @@ def test_cli_jobs_parallel(tmp_path: Path):
     assert not list(tmp_path.glob("*.velox-orig.*"))
 
 
+def test_verify_output_passes_normally(tmp_path: Path):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    report = Pipeline(_no_backup_config()).process(source)
+    assert report.ok, report.error
+    assert report.modified
+
+
+def test_verify_failure_keeps_original(tmp_path: Path, monkeypatch):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    original = source.read_bytes()
+
+    pipeline = Pipeline(_no_backup_config())
+    monkeypatch.setattr(
+        Pipeline, "_verify_output", lambda self, *args, **kwargs: "simulated failure"
+    )
+
+    report = pipeline.process(source)
+    assert not report.ok
+    assert "verification" in (report.error or "").lower()
+    assert source.read_bytes() == original  # original untouched
+    assert not list(tmp_path.glob(".velox-*"))
+
+
+def test_verify_deep_decode_passes(tmp_path: Path):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    config = _no_backup_config()
+    config.general.verify_full_decode = True
+    report = Pipeline(config).process(source)
+    assert report.ok, report.error
+    assert report.modified
+
+
+
 
 
 

@@ -12,6 +12,8 @@ def test_defaults_match_documented_values():
     assert config.general.keep_original is False
     assert config.general.temp_dir == "source"
     assert config.general.concurrency == 2
+    assert config.general.verify_output is True
+    assert config.general.verify_full_decode is False
     assert config.clean_audio.language == "eng,und"
     assert config.clean_subs.language == "eng"
     assert config.standardise_audio.audio_codec == "aac"

@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -329,6 +330,14 @@ class Pipeline:
             report.modified = modified
 
             if modified and not dry_run:
+                if self.config.general.verify_output:
+                    problem = self._verify_output(
+                        current, original, self._expected_video_codec(report), observer
+                    )
+                    if problem:
+                        raise PluginError(
+                            f"Output verification failed: {problem}", "verify"
+                        )
                 report.final_path = self._commit(current, source)
                 if not self.config.general.keep_original:
                     self._remove_backup(source)
@@ -466,6 +475,65 @@ class Pipeline:
         probe = dict(media.probe)
         probe["streams"] = streams
         return MediaInfo.from_probe(media.path, probe, media.size)
+
+    # --------------------------------------------------------- verification
+    def _verify_output(
+        self,
+        path: Path,
+        original: MediaInfo,
+        expected_codec: str | None,
+        observer: ProgressObserver,
+    ) -> str | None:
+        """Integrity-check the processed file before it replaces the original."""
+        observer.on_step_note("Verifying output…")
+        self.log.info("Verifying output…")
+        try:
+            media = self.ffmpeg.probe(path)
+        except VeloxError as exc:
+            return str(exc)
+
+        if not media.is_video:
+            return "no video stream in the output"
+
+        if original.duration > 0 and media.duration > 0:
+            tolerance = max(1.0, original.duration * 0.005)
+            if abs(media.duration - original.duration) > tolerance:
+                return (
+                    f"duration mismatch ({media.duration:.1f}s vs original "
+                    f"{original.duration:.1f}s)"
+                )
+
+        if expected_codec:
+            stream = media.video_stream or {}
+            codec = str(stream.get("codec_name") or "").lower()
+            if codec and codec != expected_codec.lower():
+                return f"video codec is {codec}, expected {expected_codec}"
+
+        if self.config.general.verify_full_decode:
+            problem = self._decode_check(path)
+            if problem:
+                return problem
+
+        self.log.info("✓ Output verified")
+        return None
+
+    def _decode_check(self, path: Path) -> str | None:
+        command = [
+            self.ffmpeg.ffmpeg_path, "-v", "error", "-xerror",
+            "-i", str(path), "-f", "null", "-",
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0 or result.stderr.strip():
+            tail = "\n".join(result.stderr.strip().splitlines()[-5:])
+            return f"decoding reported errors: {tail}"
+        return None
+
+    def _expected_video_codec(self, report: RunReport) -> str | None:
+        for outcome in report.outcomes:
+            if outcome.plugin.key == "hevc_gpu" and outcome.executed:
+                codec = str(getattr(self.config.hevc_gpu, "target_codec", "") or "")
+                return codec or None
+        return None
 
     # ------------------------------------------------------------ scratch dir
     def _scratch_dir(self, source: Path) -> Path:

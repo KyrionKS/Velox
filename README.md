@@ -85,10 +85,15 @@ python3 -m velox --init-config config.toml
 ### Safety & disk space
 
 Velox processes everything in a scratch folder and only touches the original
-once the whole pipeline succeeded. By default the original is then **replaced
-and the backup removed**, so after a successful encode only the new (smaller)
-file remains — no leftovers. Use `--keep-original` to keep a `.velox-orig`
-copy, or `--output-dir DIR` to leave the originals untouched entirely.
+once the whole pipeline succeeded. Before replacing the original it **verifies
+the output** (parses, has a video stream, same duration); if the check fails the
+original is kept. Set `verify_full_decode = true` to also decode the whole
+output and catch corrupt frames (slower).
+
+By default the original is then **replaced and the backup removed**, so after a
+successful encode only the new (smaller) file remains — no leftovers. Use
+`--keep-original` to keep a `.velox-orig` copy, or `--output-dir DIR` to leave
+the originals untouched entirely.
 
 ## Desktop app (PySide6)
 
