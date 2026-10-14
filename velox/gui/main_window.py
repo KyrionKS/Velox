@@ -14,7 +14,7 @@ import logging
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QRectF, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -23,6 +23,7 @@ from PySide6.QtGui import (
     QKeySequence,
     QPainter,
     QPainterPath,
+    QPalette,
     QPixmap,
 )
 from PySide6.QtWidgets import (
@@ -81,38 +82,6 @@ def _fmt_duration(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
-def _toolbar_icon(shape: str) -> QIcon:
-    """A crisp monochrome toolbar icon (drawn as a mask so the system tints it
-    correctly in light and dark mode)."""
-    icon = QIcon()
-    for size in (16, 32, 64):
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(Qt.GlobalColor.black)
-        if shape == "play":
-            path = QPainterPath()
-            path.moveTo(size * 0.26, size * 0.15)
-            path.lineTo(size * 0.84, size * 0.50)
-            path.lineTo(size * 0.26, size * 0.85)
-            path.closeSubpath()
-            painter.drawPath(path)
-        elif shape == "stop":
-            margin = size * 0.26
-            radius = size * 0.13
-            painter.drawRoundedRect(
-                QRectF(margin, margin, size - 2 * margin, size - 2 * margin),
-                radius,
-                radius,
-            )
-        painter.end()
-        icon.addPixmap(pixmap)
-    icon.setIsMask(True)
-    return icon
-
-
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -169,6 +138,37 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self._build_status_strip())
 
+    def _toolbar_icon(self, shape: str) -> QIcon:
+        """Draw a play/stop glyph in the current text colour, so it stays
+        visible on both light and dark toolbars."""
+        color = self.palette().color(QPalette.ColorRole.WindowText)
+        icon = QIcon()
+        for size in (16, 32, 64):
+            pixmap = QPixmap(size, size)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color)
+            if shape == "play":
+                path = QPainterPath()
+                path.moveTo(size * 0.26, size * 0.15)
+                path.lineTo(size * 0.84, size * 0.50)
+                path.lineTo(size * 0.26, size * 0.85)
+                path.closeSubpath()
+                painter.drawPath(path)
+            elif shape == "stop":
+                margin = size * 0.26
+                radius = size * 0.13
+                painter.drawRoundedRect(
+                    QRectF(margin, margin, size - 2 * margin, size - 2 * margin),
+                    radius,
+                    radius,
+                )
+            painter.end()
+            icon.addPixmap(pixmap)
+        return icon
+
     def _build_actions(self) -> None:
         style = self.style()
         self.act_add_files = QAction(
@@ -183,12 +183,12 @@ class MainWindow(QMainWindow):
         self.act_add_folder.setShortcut(QKeySequence("Ctrl+Shift+O"))
         self.act_add_folder.triggered.connect(self._add_folder)
 
-        self.act_start = QAction(_toolbar_icon("play"), "Start", self)
+        self.act_start = QAction(self._toolbar_icon("play"), "Start", self)
         self.act_start.setToolTip("Start processing")
         self.act_start.setShortcut(QKeySequence("Ctrl+R"))
         self.act_start.triggered.connect(lambda: self._start(dry_run=False))
 
-        self.act_stop = QAction(_toolbar_icon("stop"), "Stop", self)
+        self.act_stop = QAction(self._toolbar_icon("stop"), "Stop", self)
         self.act_stop.setToolTip("Stop after the current pass")
         self.act_stop.setEnabled(False)
         self.act_stop.triggered.connect(self._stop)
@@ -748,6 +748,13 @@ class MainWindow(QMainWindow):
         geometry = self._qsettings.value("window/geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        # Redraw the toolbar icons when the system appearance (light/dark) changes.
+        if event.type() == QEvent.Type.PaletteChange and hasattr(self, "act_start"):
+            self.act_start.setIcon(self._toolbar_icon("play"))
+            self.act_stop.setIcon(self._toolbar_icon("stop"))
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         self._qsettings.setValue("window/geometry", self.saveGeometry())
