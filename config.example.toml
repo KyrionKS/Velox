@@ -6,8 +6,8 @@
 # Built-in defaults differ slightly (e.g. audio_bitrate_kbps = 0 and no
 # absolute size bounds) - see velox/config.py.
 #
-# Plugin order mirrors the original Tdarr stack. Reorder the list (or remove
-# entries) to change what runs and in which order.
+# Pipeline order. Reorder the list (or remove entries) to change what runs and
+# in which order.
 
 [general]
 ffmpeg_path = "ffmpeg"
@@ -40,11 +40,11 @@ order = [
   "file_size_check",
 ]
 
-# Tdarr_Plugin_lmg1_Reorder_Streams
+# Move Video First
 [plugins.reorder_streams]
 enabled = true
 
-# Tdarr_Plugin_MC93_Migz3CleanAudio
+# Clean Audio Tracks
 [plugins.clean_audio]
 enabled = true
 # ISO-639-2 3-letter codes, comma separated. Keep "und" for untagged tracks.
@@ -61,7 +61,7 @@ tag_title = false
 #   a language code (e.g. "eng") -> the first kept track in that language
 default_audio = ""
 
-# Tdarr_Plugin_MC93_Migz4CleanSubs
+# Clean Subtitle Tracks
 [plugins.clean_subs]
 enabled = true
 language = "eng"
@@ -69,7 +69,7 @@ commentary = false
 sdh = true
 tag_language = ""
 
-# Tdarr_Plugin_00td_action_standardise_audio_stream_codecs
+# Standardise Audio Codec
 [plugins.standardise_audio]
 enabled = true
 audio_codec = "aac"
@@ -77,7 +77,7 @@ audio_codec = "aac"
 # 0 = keep the source bitrate. 256 is a good default for stereo/5.1 AAC.
 audio_bitrate_kbps = 256
 
-# Tdarr_Plugin_AC_HEVC_GPU
+# Encode Video
 [plugins.hevc_gpu]
 enabled = true
 target_codec = "hevc"
@@ -140,7 +140,7 @@ force_conform = false
 exclude_gpus = ""
 allowed_codecs = "vp9,av1"
 
-# Tdarr_Plugin_00td_action_re_order_all_streams_v2
+# Order Streams
 [plugins.reorder_all_streams]
 enabled = true
 process_order = "codecs,channels,languages,streamTypes"
@@ -149,7 +149,7 @@ channels = "7.1,5.1,2,1"
 codecs = ""
 stream_types = "video,audio,subtitle"
 
-# Tdarr_Plugin_a9he_New_file_size_check
+# Check File Size
 [plugins.file_size_check]
 enabled = true
 # Relative to the ORIGINAL file (percent). A guard against bloat; lower_bound = 0

@@ -20,7 +20,7 @@ class FFmpegError(VeloxError):
 
 
 class PluginError(VeloxError):
-    """Raised when a plugin cannot process a file (mirrors Tdarr plugin errors)."""
+    """Raised when a step cannot process a file."""
 
     def __init__(self, message: str, plugin_id: str | None = None) -> None:
         super().__init__(message)

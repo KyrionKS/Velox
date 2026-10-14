@@ -40,13 +40,13 @@ ENCODERS = [
 AUDIO_CODECS = ["aac", "ac3", "eac3", "flac", "libmp3lame"]
 
 PLUGIN_LABELS = {
-    "reorder_streams": "Reorder Streams (video first)",
-    "clean_audio": "Clean Audio Streams",
-    "clean_subs": "Clean Subtitle Streams",
-    "standardise_audio": "Standardise Audio Codecs",
-    "hevc_gpu": "Transcode video (HEVC GPU)",
-    "reorder_all_streams": "Re-order All Streams V2",
-    "file_size_check": "File Size Check",
+    "reorder_streams": "Move Video First",
+    "clean_audio": "Clean Audio Tracks",
+    "clean_subs": "Clean Subtitle Tracks",
+    "standardise_audio": "Standardise Audio Codec",
+    "hevc_gpu": "Encode Video",
+    "reorder_all_streams": "Order Streams",
+    "file_size_check": "Check File Size",
 }
 
 BITRATE_MODES = [

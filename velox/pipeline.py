@@ -6,7 +6,7 @@ written as few times as possible — important for large files on a NAS.  Plugin
 that need their own pass (the video transcode) flush the pending remux first.
 
 After every pass the file is re-probed so the next plugin sees fresh stream
-information (this replaces Tdarr's ``reQueueAfter`` behaviour).
+information (each step sees the result of the previous one).
 
 All work happens in a scratch directory next to the source file and the result
 is only moved into place once the whole pipeline succeeded, so the original is
@@ -203,7 +203,7 @@ class Pipeline:
                     "-i", str(current), *args, str(output_path),
                 ]
                 steps = [outcome.plugin.name for outcome in outcomes]
-                observer.on_pass_started("Merged remux: " + " + ".join(steps))
+                observer.on_pass_started(" + ".join(steps))
                 self.log.info("   → ffmpeg (merged remux): %s", " ".join(command))
                 for outcome in outcomes:
                     outcome.command = command
@@ -266,7 +266,7 @@ class Pipeline:
                     observer.on_step_note(line)
 
                 if result.error:
-                    raise PluginError(result.error, plugin.tdarr_id)
+                    raise PluginError(result.error, plugin.key)
 
                 if not result.process_file:
                     continue

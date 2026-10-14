@@ -1,8 +1,8 @@
-"""Velox - standalone Python port of a Tdarr classic plugin stack.
+"""Velox - clean up and transcode video files with ffmpeg.
 
-Velox analyses a video file with ``ffprobe`` and then runs a configurable
-pipeline of plugins (ported from Tdarr classic plugins) that remux, clean and
-optionally transcode the file using ``ffmpeg``.
+Velox analyses a file with ``ffprobe`` and runs a configurable pipeline of
+steps (remux, audio/subtitle cleanup, audio standardisation, video encoding,
+size check) using ``ffmpeg``, with a CLI and a PySide6 desktop app.
 """
 
 from __future__ import annotations

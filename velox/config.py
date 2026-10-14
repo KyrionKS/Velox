@@ -35,17 +35,6 @@ DEFAULT_ORDER = [
     "file_size_check",
 ]
 
-# Tdarr plugin ids, kept for traceability (docs / migration).
-TDARR_IDS = {
-    "reorder_streams": "Tdarr_Plugin_lmg1_Reorder_Streams",
-    "clean_audio": "Tdarr_Plugin_MC93_Migz3CleanAudio",
-    "clean_subs": "Tdarr_Plugin_MC93_Migz4CleanSubs",
-    "standardise_audio": "Tdarr_Plugin_00td_action_standardise_audio_stream_codecs",
-    "hevc_gpu": "Tdarr_Plugin_AC_HEVC_GPU",
-    "reorder_all_streams": "Tdarr_Plugin_00td_action_re_order_all_streams_v2",
-    "file_size_check": "Tdarr_Plugin_a9he_New_file_size_check",
-}
-
 
 @dataclass
 class GeneralConfig:
@@ -78,12 +67,12 @@ class PluginConfigBase:
 
 @dataclass
 class ReorderStreamsConfig(PluginConfigBase):
-    """Tdarr_Plugin_lmg1_Reorder_Streams - move the video stream to the front."""
+    """Move Video First - put the video stream at the front."""
 
 
 @dataclass
 class CleanAudioConfig(PluginConfigBase):
-    """Tdarr_Plugin_MC93_Migz3CleanAudio - keep only chosen audio languages."""
+    """Clean Audio Tracks - keep only the chosen audio languages."""
 
     language: str = "eng,und"
     commentary: bool = False
@@ -99,7 +88,7 @@ class CleanAudioConfig(PluginConfigBase):
 
 @dataclass
 class CleanSubsConfig(PluginConfigBase):
-    """Tdarr_Plugin_MC93_Migz4CleanSubs - keep only chosen subtitle languages."""
+    """Clean Subtitle Tracks - keep only the chosen subtitle languages."""
 
     language: str = "eng"
     commentary: bool = False
@@ -109,7 +98,7 @@ class CleanSubsConfig(PluginConfigBase):
 
 @dataclass
 class StandardiseAudioConfig(PluginConfigBase):
-    """Tdarr_Plugin_00td_action_standardise_audio_stream_codecs."""
+    """Standardise Audio Codec."""
 
     audio_codec: str = "aac"
     # Cap the audio bitrate (kbps) so audio cannot eat the video size budget.
@@ -120,7 +109,7 @@ class StandardiseAudioConfig(PluginConfigBase):
 
 @dataclass
 class HevcGpuConfig(PluginConfigBase):
-    """Tdarr_Plugin_AC_HEVC_GPU - video transcode (GPU if available)."""
+    """Encode Video - transcode the video (GPU if available)."""
 
     target_codec: str = "hevc"
     encoder: str = "hevc_videotoolbox"
@@ -166,7 +155,7 @@ class HevcGpuConfig(PluginConfigBase):
 
     try_use_gpu: bool = True
     # Velox extension: fall back to CPU (libx265/libx264) when no GPU encoder
-    # works.  The Tdarr original aborts in that case.
+    # works (a hard error would be used otherwise).
     allow_cpu_fallback: bool = True
     cpu_preset: str = "medium"
     container: str = "mkv"
@@ -186,7 +175,7 @@ class HevcGpuConfig(PluginConfigBase):
 
 @dataclass
 class ReorderAllStreamsConfig(PluginConfigBase):
-    """Tdarr_Plugin_00td_action_re_order_all_streams_v2."""
+    """Order Streams."""
 
     process_order: str = "codecs,channels,languages,streamTypes"
     languages: str = ""
@@ -197,7 +186,7 @@ class ReorderAllStreamsConfig(PluginConfigBase):
 
 @dataclass
 class FileSizeCheckConfig(PluginConfigBase):
-    """Tdarr_Plugin_a9he_New_file_size_check."""
+    """Check File Size."""
 
     # Relative bounds (percent of the ORIGINAL file). lower_bound = 0 disables
     # the lower check, which is what you want when shrinking large sources to a
@@ -370,7 +359,6 @@ __all__ = [
     "GeneralConfig",
     "PluginConfigBase",
     "DEFAULT_ORDER",
-    "TDARR_IDS",
     "load_config",
     "save_config",
     "user_config_path",

@@ -1,4 +1,4 @@
-"""Tdarr_Plugin_a9he_New_file_size_check.
+"""Check File Size.
 
 Validates that the processed file is within the configured bounds relative to
 the original file (``upper_bound`` / ``lower_bound``, in percent) and/or within
@@ -17,8 +17,7 @@ MIB = 1024 * 1024
 
 class FileSizeCheckPlugin(Plugin):
     key = "file_size_check"
-    name = "New File Size Check"
-    tdarr_id = "Tdarr_Plugin_a9he_New_file_size_check"
+    name = "Check File Size"
     description = (
         "Raises an error if the new file size is outside the configured relative "
         "or absolute bounds."

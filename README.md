@@ -1,37 +1,37 @@
 # Velox
 
-Velox is a standalone Python port of a Tdarr classic-plugin stack. It runs the
-same stream-cleanup / remux / transcode steps locally with `ffmpeg` — no Tdarr
-server or node required. Runs on macOS (and Linux/Windows).
+Velox cleans up and transcodes video files with `ffmpeg` — remux/stream-copy,
+audio & subtitle cleanup, audio standardisation, video encoding and a size
+check. Runs on macOS (Apple Silicon optimized) and Linux/Windows.
 
-The name of the pipeline steps, their inputs and their semantics are kept close
-to the original Tdarr plugins so behaviour is familiar:
+The pipeline runs an ordered set of **steps**, each with a clear name:
 
-| Order | Velox key             | Tdarr plugin                                                       |
-| ----: | --------------------- | ------------------------------------------------------------------ |
-| 1     | `reorder_streams`     | `Tdarr_Plugin_lmg1_Reorder_Streams`                                |
-| 2     | `clean_audio`         | `Tdarr_Plugin_MC93_Migz3CleanAudio`                                |
-| 3     | `clean_subs`          | `Tdarr_Plugin_MC93_Migz4CleanSubs`                                 |
-| 4     | `standardise_audio`   | `Tdarr_Plugin_00td_action_standardise_audio_stream_codecs`         |
-| 5     | `hevc_gpu`            | `Tdarr_Plugin_AC_HEVC_GPU`                                         |
-| 6     | `reorder_all_streams` | `Tdarr_Plugin_00td_action_re_order_all_streams_v2`                 |
-| 7     | `file_size_check`     | `Tdarr_Plugin_a9he_New_file_size_check`                            |
+| Order | Key                   | Step                     | What it does                                             |
+| ----: | --------------------- | ------------------------ | -------------------------------------------------------- |
+| 1     | `reorder_streams`     | Move Video First         | Puts the video stream at the front of the file            |
+| 2     | `clean_audio`         | Clean Audio Tracks       | Keeps only the chosen audio languages, tags/drops tracks  |
+| 3     | `clean_subs`          | Clean Subtitle Tracks    | Keeps only the chosen subtitle languages, tags/drops      |
+| 4     | `standardise_audio`   | Standardise Audio Codec  | Transcodes audio to one codec (keeps bitrate/channels)    |
+| 5     | `hevc_gpu`            | Encode Video             | Encodes the video (hardware encoder when available)       |
+| 6     | `reorder_all_streams` | Order Streams            | Sorts streams by codec/channels/language/type             |
+| 7     | `file_size_check`     | Check File Size          | Errors if the result is outside the configured size bounds|
 
 ## What it does
 
-1. **Reorder Streams** – moves the video stream to the front (needed so later
-   tools detect the codec).
-2. **Clean Audio** – keeps only the configured audio languages, optionally
-   drops commentary/description tracks and tags untagged tracks.
-3. **Clean Subtitles** – keeps only the configured subtitle languages,
+1. **Move Video First** – ensures the video stream leads (needed so later
+   tools detect the codec correctly).
+2. **Clean Audio Tracks** – keeps only the configured audio languages,
+   optionally drops commentary/description tracks and tags untagged tracks.
+3. **Clean Subtitle Tracks** – keeps only the configured subtitle languages,
    optionally drops commentary/SDH tracks and tags untagged tracks.
-4. **Standardise Audio** – transcodes every audio track that is not in the
-   target codec (keeping bitrate/channels).
-5. **HEVC GPU** – transcodes the video to HEVC/H.264, using a hardware encoder
-   when available (on macOS: `hevc_videotoolbox`), otherwise optionally CPU.
-6. **Reorder All Streams V2** – sorts streams by codec/channels/language/type.
-7. **New File Size Check** – errors if the result is outside the configured
-   size bounds relative to the original.
+4. **Standardise Audio Codec** – transcodes every audio track that is not in
+   the target codec (keeping bitrate/channels).
+5. **Encode Video** – encodes the video to the target codec, using a hardware
+   encoder when available (on macOS: `hevc_videotoolbox`), otherwise optionally
+   CPU.
+6. **Order Streams** – sorts streams by codec/channels/language/type.
+7. **Check File Size** – errors if the result is outside the configured size
+   bounds relative to the original.
 
 All the stream-copy steps (1, 2, 3, 4 and 6) are **merged into a single
 `ffmpeg` pass**, so a file is read and written as few times as possible. Only

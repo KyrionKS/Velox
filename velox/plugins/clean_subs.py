@@ -1,4 +1,4 @@
-"""Tdarr_Plugin_MC93_Migz4CleanSubs - Migz Clean Subtitle Streams (v2.6)."""
+"""Clean Subtitle Tracks - keep only the chosen subtitle languages."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ from .base import PipelineContext, Plugin, PluginResult, RemuxPlan
 
 class CleanSubsPlugin(Plugin):
     key = "clean_subs"
-    name = "Migz Clean Subtitle Streams"
-    tdarr_id = "Tdarr_Plugin_MC93_Migz4CleanSubs"
+    name = "Clean Subtitle Tracks"
     description = (
         "Keeps only the specified language subtitle tracks and can tag tracks "
         "with an unknown language."

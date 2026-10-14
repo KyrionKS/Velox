@@ -1,4 +1,4 @@
-"""Tdarr_Plugin_lmg1_Reorder_Streams - Lmg1 Reorder Streams."""
+"""Move Video First - put the video stream at the front of the file."""
 
 from __future__ import annotations
 
@@ -24,8 +24,7 @@ def type_order(media: MediaInfo) -> list[int]:
 
 class ReorderStreamsPlugin(Plugin):
     key = "reorder_streams"
-    name = "Lmg1 Reorder Streams"
-    tdarr_id = "Tdarr_Plugin_lmg1_Reorder_Streams"
+    name = "Move Video First"
     description = (
         "Moves the video stream to the front so downstream tools recognise the "
         "codec correctly."

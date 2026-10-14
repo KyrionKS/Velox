@@ -204,7 +204,7 @@ class MainWindow(QMainWindow):
             self,
             "Velox",
             f"<b>Velox {__version__}</b><br><br>"
-            "Standalone Tdarr-style video processing.<br><br>"
+            "Video cleanup and transcoding for Apple Silicon.<br><br>"
             f"ffmpeg: <code>{self.config.general.ffmpeg_path}</code>",
         )
 

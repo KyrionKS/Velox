@@ -1,4 +1,4 @@
-"""Tdarr_Plugin_MC93_Migz3CleanAudio - Migz Clean Audio Streams (v2.4)."""
+"""Clean Audio Tracks - keep only the chosen audio languages."""
 
 from __future__ import annotations
 
@@ -13,8 +13,7 @@ TITLE_BY_CHANNELS = {8: "7.1", 6: "5.1", 2: "2.0"}
 
 class CleanAudioPlugin(Plugin):
     key = "clean_audio"
-    name = "Migz Clean Audio Streams"
-    tdarr_id = "Tdarr_Plugin_MC93_Migz3CleanAudio"
+    name = "Clean Audio Tracks"
     description = (
         "Keeps only the specified language audio tracks and can tag tracks with "
         "an unknown language."

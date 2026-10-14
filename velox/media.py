@@ -1,9 +1,4 @@
-"""A thin, read-only wrapper around ffprobe JSON output.
-
-Mirrors the parts of Tdarr's ``file`` / ``file.ffProbeData`` object that the
-ported plugins rely on (``container``, ``fileMedium``, ``streams``,
-``file_size``, ``ffProbeData.format.duration`` ...).
-"""
+"""A thin, read-only wrapper around ffprobe JSON output."""
 
 from __future__ import annotations
 
@@ -81,7 +76,7 @@ class MediaInfo:
 
     @property
     def container(self) -> str:
-        """Container as the bare file extension (Tdarr's ``file.container``)."""
+        """Container as the bare file extension (e.g. ``mkv``)."""
         return self.path.suffix.lower().lstrip(".")
 
     @property

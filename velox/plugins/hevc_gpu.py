@@ -1,9 +1,8 @@
-"""Tdarr_Plugin_AC_HEVC_GPU - GPU video transcode.
+"""Encode Video - hardware video transcode.
 
-Ported from arabcoders' ``Tdarr_Plugin_AC_HEVC_GPU`` (v1.42) and tuned for
-"best quality at the smallest size" on Apple Silicon.
+Tuned for "best quality at the smallest size" on Apple Silicon.
 
-Key adaptations over the Tdarr original:
+Key points:
 
 * **Bitrate modes**:
   - ``quality`` (default): constant quality (Apple Silicon VideoToolbox
@@ -14,7 +13,7 @@ Key adaptations over the Tdarr original:
   - ``size``: fixed output size per file.
 * **No downscaling**: the source resolution is kept (up to 4K/8K).
 * **Hardware decode** (VideoToolbox) on Apple Silicon.
-* **Encoder probing** picks the first working GPU encoder in the original order
+* **Encoder probing** picks the first working GPU encoder in a fixed order
   (nvenc -> amf -> qsv -> videotoolbox -> vaapi); the default configuration pins
   ``hevc_videotoolbox`` for Apple Silicon.
 * **Encoder-aware flags**: VideoToolbox supports ``-q:v`` and ``-spatial_aq`` but
@@ -84,8 +83,7 @@ def _is_10bit(stream: dict[str, Any] | None) -> bool:
 
 class HevcGpuPlugin(Plugin):
     key = "hevc_gpu"
-    name = "Transcode a video file (HEVC GPU)"
-    tdarr_id = "Tdarr_Plugin_AC_HEVC_GPU"
+    name = "Encode Video"
     description = "Transcodes a video file to the target codec using a GPU encoder when possible."
     mergeable = False  # a transcode always needs its own pass
 

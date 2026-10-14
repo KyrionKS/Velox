@@ -1,4 +1,4 @@
-"""Tdarr_Plugin_00td_action_re_order_all_streams_v2 - Re-order All Streams V2.
+"""Order Streams.
 
 Re-orders streams by a configurable set of properties
 (codecs, channels, languages, streamTypes).
@@ -22,8 +22,7 @@ def _channels_value(stream: dict[str, Any]) -> str:
 
 class ReorderAllStreamsPlugin(Plugin):
     key = "reorder_all_streams"
-    name = "Re-order All Streams V2"
-    tdarr_id = "Tdarr_Plugin_00td_action_re_order_all_streams_v2"
+    name = "Order Streams"
     description = "Re-orders all streams based on codecs, channels, languages and stream types."
 
     def run(self, media: MediaInfo, ctx: PipelineContext) -> PluginResult:

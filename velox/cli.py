@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from .config import DEFAULT_ORDER, TDARR_IDS, VeloxConfig, load_config, save_config
+from .config import DEFAULT_ORDER, VeloxConfig, load_config, save_config
 from .errors import VeloxError
 from .events import ProgressObserver, fmt_bytes
 from .ffmpeg import FFmpegTools
@@ -37,9 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="velox",
         description=(
-            "Velox - run a Tdarr-style plugin stack (reorder streams, clean "
-            "audio/subs, standardise audio, HEVC transcode, size check) as a "
-            "standalone tool using ffmpeg."
+            "Velox - clean up and transcode video files with ffmpeg "
+            "(remux/stream-copy, audio & subtitle cleanup, standardise audio, "
+            "encode video, size check)."
         ),
     )
     parser.add_argument("paths", nargs="*", help="Files and/or directories to process.")
@@ -109,7 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--list-plugins", action="store_true",
-        help="List available plugins and their Tdarr ids and exit.",
+        help="List the processing steps and exit.",
     )
     parser.add_argument("-v", "--verbose", action="count", default=0)
     parser.add_argument("-q", "--quiet", action="store_true")
@@ -153,8 +153,11 @@ def _apply_plugin_selection(config: VeloxConfig, only: str | None, skip: str | N
 
 
 def _print_plugins() -> None:
+    from .plugins import PLUGIN_MAP
+
     for key in DEFAULT_ORDER:
-        print(f"{key:<22} {TDARR_IDS[key]}")
+        cls = PLUGIN_MAP.get(key)
+        print(f"{key:<22} {cls.name if cls else '?'}")
 
 
 def _run_info(ffmpeg: FFmpegTools, files: list[Path]) -> int:

@@ -1,7 +1,7 @@
 """Plugin registry.
 
-The order here is the default pipeline order (mirrors the user's Tdarr stack).
-It can be overridden with ``[pipeline] order = [...]`` in the config.
+The order here is the default pipeline order and can be overridden with
+``[pipeline] order = [...]`` in the config.
 """
 
 from __future__ import annotations

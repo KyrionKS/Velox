@@ -1,11 +1,10 @@
 """Plugin base classes.
 
-Each Velox plugin is a small port of one Tdarr classic plugin.  Instead of
-returning a raw ffmpeg "preset" string (as Tdarr does), a plugin returns a
-:class:`PluginResult` describing the ffmpeg arguments it wants to apply.
+A Velox step analyses a file and returns a :class:`PluginResult` describing
+what should happen to it (usually a stream-copy plan or an ffmpeg command).
 
 The pipeline runner turns that into one concrete ``ffmpeg`` invocation and,
-after every modification, re-probes the file so the next plugin sees fresh
+after every modification, re-probes the file so the next step sees fresh
 stream information.
 """
 
@@ -81,11 +80,11 @@ class PluginResult:
     remux: RemuxPlan | None = None
     # output container, defaults to the input container
     container: str | None = None
-    # whether the whole stack should be re-run afterwards (Tdarr semantics)
+    # whether the pipeline should re-evaluate the file afterwards
     requeue: bool = False
-    # human readable log lines, prefixed with the Tdarr-style icons
+    # human readable log lines
     log: list[str] = field(default_factory=list)
-    # set to abort processing with an error (Tdarr throws)
+    # set to abort processing with an error
     error: str | None = None
 
     def note(self, message: str) -> None:
@@ -107,7 +106,6 @@ class Plugin:
 
     key: str = ""
     name: str = ""
-    tdarr_id: str = ""
     stage: str = "Pre-processing"
     description: str = ""
     # Whether this plugin's file change can be batched with neighbouring

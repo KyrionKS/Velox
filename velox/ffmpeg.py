@@ -248,7 +248,7 @@ class FFmpegTools:
         input_args: Sequence[str] | None = None,
         video_filter: str | None = None,
     ) -> bool:
-        """Mirror of the Tdarr ``hasEncoder`` probe: encode 1s of black to null."""
+        """Probe the encoder by encoding 1 second of black to null."""
         if encoder in self._encoder_cache:
             return self._encoder_cache[encoder]
 

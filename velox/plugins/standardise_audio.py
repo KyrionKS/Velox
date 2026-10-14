@@ -1,4 +1,4 @@
-"""Tdarr_Plugin_00td_action_standardise_audio_stream_codecs.
+"""Standardise Audio Codec.
 
 Transcodes every audio stream that is not already in the target codec.  Bitrate
 and channel count are kept as close to the source as possible.
@@ -15,8 +15,7 @@ LOSSLESS_CODECS = {"flac", "truehd", "mlp", "pcm_s16le", "pcm_s24le", "pcm_s32le
 
 class StandardiseAudioPlugin(Plugin):
     key = "standardise_audio"
-    name = "Standardise Audio Stream Codecs"
-    tdarr_id = "Tdarr_Plugin_00td_action_standardise_audio_stream_codecs"
+    name = "Standardise Audio Codec"
     description = (
         "Transcodes all audio tracks that are not in the specified codec into "
         "that codec, keeping the original bitrate and channel count."
