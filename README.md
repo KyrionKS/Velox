@@ -92,19 +92,22 @@ copy, or `--output-dir DIR` to leave the originals untouched entirely.
 
 ## Desktop app (PySide6)
 
-A native macOS window with three tabs:
+A native macOS window built around a **sidebar** (Files · Settings · Results)
+with the actions in a toolbar, following the current macOS layout conventions:
 
+- **Toolbar** — Add Files / Add Folder, and Start / Dry Run / Stop.
 - **Files** — add files or a whole folder with the native Finder dialog.
-- **Settings** — a simple *Basic* tab (quality preset, bitrate mode, audio,
-  subtitles, encoder, output) plus an *Advanced* tab (bitrate limits, size
-  bounds, per-step enable/disable, ffmpeg location).
+- **Settings** — Basic and Advanced, left-aligned and scrollable so nothing is
+  cut off: quality preset, bitrate mode, audio (incl. default track),
+  subtitles, encoder, output, and advanced limits / per-step toggles.
 - **Results** — one row per ffmpeg pass with the space it saved, plus a total.
 
-The window shows live progress — the current file (x of y), the running step
-with percentage and an estimated time left, and an overall bar — plus a
+The always-visible status strip shows the current file (x of y), the running
+step with percentage and an estimated time left, and an overall bar, with a
 collapsible *Details* log. *Dry run* previews without writing anything; *Stop*
-cancels safely (the original is never left half-processed). Settings are stored
-in `~/Library/Application Support/Velox/config.toml`.
+cancels safely (the original is never left half-processed). The window size is
+remembered, and settings live in
+`~/Library/Application Support/Velox/config.toml`.
 
 ### Installing / starting on macOS
 

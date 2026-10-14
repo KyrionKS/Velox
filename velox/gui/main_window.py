@@ -1,4 +1,13 @@
-"""The Velox main window."""
+"""The Velox main window (macOS-oriented layout).
+
+Follows the current macOS settings/Sidebar pattern:
+
+* a toolbar holds the actions (Add files/folder, Start, Dry run, Stop);
+* the main area is a source-list **sidebar** + content pane
+  (Files / Settings / Results);
+* the bottom is a slim, secondary progress/status strip (with a collapsible
+  Details log) rather than the primary action area.
+"""
 
 from __future__ import annotations
 
@@ -6,12 +15,12 @@ import logging
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -21,7 +30,10 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QTabWidget,
+    QSizePolicy,
+    QStackedWidget,
+    QStyle,
+    QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -45,6 +57,8 @@ FILE_FILTER = (
     "*.wmv *.flv *.mpg *.mpeg *.vob);;All files (*)"
 )
 
+SIDEBAR_WIDTH = 190
+
 
 def _fmt_duration(seconds: float) -> str:
     seconds = int(max(0, seconds))
@@ -59,8 +73,8 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Velox")
-        self.setMinimumSize(720, 520)
-        self.resize(920, 640)
+        self.setMinimumSize(820, 560)
+        self.resize(1040, 720)
         self.config: VeloxConfig = load_user_config()
         self._worker: PipelineWorker | None = None
         self._files_total = 0
@@ -70,6 +84,7 @@ class MainWindow(QMainWindow):
         self._pass_active = False
         self._pass_started_at: float | None = None
         self._run_started_at: float | None = None
+        self._qsettings = QSettings("Velox", "Velox")
 
         self._elapsed_timer = QTimer(self)
         self._elapsed_timer.setInterval(1000)
@@ -77,32 +92,127 @@ class MainWindow(QMainWindow):
 
         self._build()
         self.settings.load_from_config(self.config)
+        self._restore_geometry()
         self._check_ffmpeg()
 
     # ------------------------------------------------------------------ build
     def _build(self) -> None:
+        self._build_actions()
+        self._build_toolbar()
+        self._build_menus()
+
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_files_tab(), "Files")
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        body.addWidget(self._build_sidebar())
+        body.addWidget(self._build_content(), 1)
+        layout.addLayout(body, 1)
+
+        layout.addWidget(self._build_status_strip())
+
+    def _build_actions(self) -> None:
+        style = self.style()
+
+        self.act_add_files = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton), "Add Files…", self
+        )
+        self.act_add_files.setShortcut(QKeySequence.StandardKey.Open)
+        self.act_add_files.triggered.connect(self._add_files)
+
+        self.act_add_folder = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon), "Add Folder…", self
+        )
+        self.act_add_folder.setShortcut(QKeySequence("Ctrl+Shift+O"))
+        self.act_add_folder.triggered.connect(self._add_folder)
+
+        self.act_dry = QAction("Dry Run", self)
+        self.act_dry.triggered.connect(lambda: self._start(dry_run=True))
+
+        self.act_start = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "Start", self
+        )
+        self.act_start.setShortcut(QKeySequence("Ctrl+R"))
+        self.act_start.triggered.connect(lambda: self._start(dry_run=False))
+
+        self.act_stop = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaStop), "Stop", self
+        )
+        self.act_stop.setEnabled(False)
+        self.act_stop.triggered.connect(self._stop)
+
+    def _build_toolbar(self) -> None:
+        bar = QToolBar("Main")
+        bar.setMovable(False)
+        bar.setFloatable(False)
+        bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.addToolBar(bar)
+        bar.addAction(self.act_add_files)
+        bar.addAction(self.act_add_folder)
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        bar.addWidget(spacer)
+        bar.addAction(self.act_dry)
+        bar.addAction(self.act_start)
+        bar.addAction(self.act_stop)
+
+    def _build_menus(self) -> None:
+        file_menu = self.menuBar().addMenu("&File")
+        file_menu.addAction(self.act_add_files)
+        file_menu.addAction(self.act_add_folder)
+        file_menu.addSeparator()
+        quit_action = QAction("Quit Velox", self)
+        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        quit_action.triggered.connect(self.close)
+        file_menu.addAction(quit_action)
+
+    def _build_sidebar(self) -> QWidget:
+        self.nav = QListWidget()
+        self.nav.setObjectName("sidebar")
+        self.nav.setFixedWidth(SIDEBAR_WIDTH)
+        self.nav.setFrameShape(QFrame.Shape.NoFrame)
+        self.nav.setSpacing(1)
+        self.nav.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        style = self.style()
+        entries = [
+            (QStyle.StandardPixmap.SP_DirIcon, "Files"),
+            (QStyle.StandardPixmap.SP_FileDialogDetailedView, "Settings"),
+            (QStyle.StandardPixmap.SP_FileDialogInfoView, "Results"),
+        ]
+        for pixmap, label in entries:
+            item = QListWidgetItem(style.standardIcon(pixmap), label)
+            item.setSizeHint(QSize(0, 30))
+            self.nav.addItem(item)
+        self.nav.setCurrentRow(0)
+        self.nav.currentRowChanged.connect(self._on_nav_changed)
+        return self.nav
+
+    def _build_content(self) -> QWidget:
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self._build_files_page())
         self.settings = SettingsPanel()
-        self.tabs.addTab(self.settings, "Settings")
+        self.settings.load_requested.connect(self._load_settings)
+        self.settings.save_requested.connect(self._save_settings)
+        self.stack.addWidget(self.settings)
         self.results = ResultsPanel()
-        self.tabs.addTab(self.results, "Results")
-        layout.addWidget(self.tabs, 1)
+        self.stack.addWidget(self.results)
+        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+        return self.stack
 
-        layout.addWidget(self._build_progress())
-        layout.addLayout(self._build_buttons())
-
-    def _build_files_tab(self) -> QWidget:
+    def _build_files_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(8)
+
+        heading = QLabel("Files to process")
+        self._make_heading(heading)
+        layout.addWidget(heading)
 
         self.file_list = QListWidget()
         self.file_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -110,10 +220,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.file_list, 1)
 
         buttons = QHBoxLayout()
-        buttons.setSpacing(6)
+        buttons.setSpacing(8)
         for label, slot in (
-            ("Add files…", self._add_files),
-            ("Add folder…", self._add_folder),
+            ("Add Files…", self._add_files),
+            ("Add Folder…", self._add_folder),
             ("Remove", self._remove_selected),
             ("Clear", lambda: self.file_list.clear()),
         ):
@@ -124,11 +234,12 @@ class MainWindow(QMainWindow):
         layout.addLayout(buttons)
         return page
 
-    def _build_progress(self) -> QWidget:
-        box = QGroupBox("Progress")
-        layout = QVBoxLayout(box)
-        layout.setContentsMargins(12, 6, 12, 8)
-        layout.setSpacing(6)
+    def _build_status_strip(self) -> QWidget:
+        strip = QFrame()
+        strip.setObjectName("statusStrip")
+        layout = QVBoxLayout(strip)
+        layout.setContentsMargins(16, 8, 16, 10)
+        layout.setSpacing(5)
 
         header = QHBoxLayout()
         self.current_label = QLabel("Idle")
@@ -138,6 +249,7 @@ class MainWindow(QMainWindow):
         self.current_label.setFont(font)
         self.count_label = QLabel("")
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.count_label.setObjectName("secondary")
         header.addWidget(self.current_label, 1)
         header.addWidget(self.count_label)
         layout.addLayout(header)
@@ -150,10 +262,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.file_bar)
 
         self.step_label = QLabel("Ready — add files, then press Start.")
-        self.step_label.setObjectName("stepLabel")
+        self.step_label.setObjectName("secondary")
         layout.addWidget(self.step_label)
 
         overall = QHBoxLayout()
+        overall.setSpacing(8)
         overall.addWidget(QLabel("Overall"))
         self.overall_bar = QProgressBar()
         self.overall_bar.setRange(0, 1)
@@ -174,34 +287,19 @@ class MainWindow(QMainWindow):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
-        self.log.setFixedHeight(140)
+        self.log.setFixedHeight(130)
         self.log.setVisible(False)
         layout.addWidget(self.log)
-        return box
+        return strip
 
-    def _build_buttons(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setSpacing(6)
-        load = QPushButton("Load settings")
-        load.clicked.connect(self._load_settings)
-        save = QPushButton("Save settings")
-        save.clicked.connect(self._save_settings)
-        row.addWidget(load)
-        row.addWidget(save)
-        row.addStretch(1)
+    @staticmethod
+    def _make_heading(label: QLabel) -> None:
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
 
-        self.dry_button = QPushButton("Dry run")
-        self.dry_button.clicked.connect(lambda: self._start(dry_run=True))
-        self.start_button = QPushButton("Start")
-        self.start_button.setDefault(True)
-        self.start_button.clicked.connect(lambda: self._start(dry_run=False))
-        self.stop_button = QPushButton("Stop")
-        self.stop_button.setEnabled(False)
-        self.stop_button.clicked.connect(self._stop)
-        row.addWidget(self.dry_button)
-        row.addWidget(self.start_button)
-        row.addWidget(self.stop_button)
-        return row
+    def _on_nav_changed(self, row: int) -> None:
+        self.stack.setCurrentIndex(row)
 
     def _toggle_details(self, checked: bool) -> None:
         self.log.setVisible(checked)
@@ -227,6 +325,8 @@ class MainWindow(QMainWindow):
             added += 1
         if added:
             self._log(f"Added {added} file(s).")
+            if self.nav.currentRow() != 0:
+                self.nav.setCurrentRow(0)
 
     def _add_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(self, "Select video files", "", FILE_FILTER)
@@ -308,25 +408,16 @@ class MainWindow(QMainWindow):
     def _stop(self) -> None:
         if self._worker is not None:
             self._worker.cancel()
-            self.stop_button.setEnabled(False)
+            self.act_stop.setEnabled(False)
             self._log("Stopping after the current pass…")
 
     def _release_worker(self) -> None:
         self._worker = None
 
     def _set_running(self, running: bool) -> None:
-        self.start_button.setEnabled(not running)
-        self.dry_button.setEnabled(not running)
-        self.stop_button.setEnabled(running)
-
-    def _update_elapsed(self) -> None:
-        if self._run_started_at is None:
-            return
-        elapsed = _fmt_duration(time.monotonic() - self._run_started_at)
-        self.count_label.setText(
-            f"File {min(self._files_done + 1, self._files_total)} of "
-            f"{self._files_total}  ·  {elapsed}"
-        )
+        self.act_start.setEnabled(not running)
+        self.act_dry.setEnabled(not running)
+        self.act_stop.setEnabled(running)
 
     def _set_busy(self, busy: bool) -> None:
         """Indeterminate bar between passes, determinate while a pass runs."""
@@ -339,6 +430,15 @@ class MainWindow(QMainWindow):
         """Set the always-visible 'what is happening now' line."""
         self._step_text = text
         self.step_label.setText(f"▶ {text}")
+
+    def _update_elapsed(self) -> None:
+        if self._run_started_at is None:
+            return
+        elapsed = _fmt_duration(time.monotonic() - self._run_started_at)
+        self.count_label.setText(
+            f"File {min(self._files_done + 1, self._files_total)} of "
+            f"{self._files_total}  ·  {elapsed}"
+        )
 
     # --------------------------------------------------------------- signals
     def _on_run_started(self, total: int) -> None:
@@ -490,7 +590,13 @@ class MainWindow(QMainWindow):
     def _log(self, message: str) -> None:
         self.log.appendPlainText(message)
 
+    def _restore_geometry(self) -> None:
+        geometry = self._qsettings.value("window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+        self._qsettings.setValue("window/geometry", self.saveGeometry())
         worker = self._worker
         if worker is not None:
             worker.cancel()

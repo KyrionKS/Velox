@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLineEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -81,6 +85,9 @@ def _dspin(minimum: float, maximum: float, value: float, decimals: int, suffix: 
 
 
 class SettingsPanel(QWidget):
+    load_requested = Signal()
+    save_requested = Signal()
+
     def __init__(self) -> None:
         super().__init__()
         self._build()
@@ -88,23 +95,63 @@ class SettingsPanel(QWidget):
     # ------------------------------------------------------------------ build
     def _build(self) -> None:
         tabs = QTabWidget()
-        tabs.addTab(self._build_basic(), "Basic")
-        tabs.addTab(self._build_advanced(), "Advanced")
+        tabs.setDocumentMode(True)
+        tabs.addTab(self._scrollable(self._build_basic()), "Basic")
+        tabs.addTab(self._scrollable(self._build_advanced()), "Advanced")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(tabs)
+        layout.setSpacing(0)
+        layout.addWidget(tabs, 1)
+        layout.addLayout(self._build_footer())
+
+    def _scrollable(self, content: QWidget) -> QScrollArea:
+        # Keep the content at a comfortable macOS-pane width and left-aligned,
+        # scrolling vertically when needed (so nothing is ever cut off).
+        content.setMaximumWidth(760)
+        wrapper = QWidget()
+        column = QVBoxLayout(wrapper)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.addWidget(content, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        column.addStretch(1)
+
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QFrame.Shape.NoFrame)
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        area.setWidget(wrapper)
+        return area
+
+    def _build_footer(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setContentsMargins(20, 8, 20, 12)
+        row.setSpacing(8)
+        load = QPushButton("Reload")
+        load.clicked.connect(self.load_requested.emit)
+        save = QPushButton("Save")
+        save.clicked.connect(self.save_requested.emit)
+        row.addStretch(1)
+        row.addWidget(load)
+        row.addWidget(save)
+        return row
 
     def _group(self, title: str, form: QFormLayout) -> QGroupBox:
-        form.setVerticalSpacing(6)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
+        form.setVerticalSpacing(7)
         form.setHorizontalSpacing(12)
-        form.setContentsMargins(6, 6, 6, 6)
+        form.setContentsMargins(14, 12, 14, 12)
         box = QGroupBox(title)
+        box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         box.setLayout(form)
         return box
 
     def _build_basic(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
 
         # --- Quality -----------------------------------------------------
         qform = QFormLayout()
@@ -223,6 +270,8 @@ class SettingsPanel(QWidget):
     def _build_advanced(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
 
         vform = QFormLayout()
         self.target_codec = QComboBox()

@@ -7,46 +7,38 @@ import sys
 
 __all__ = ["main"]
 
-# Keep the native look, just add a bit of spacing and use the system accent
-# colour for progress. palette(...) keeps it correct in light and dark mode.
+# Rely on the native macOS style for the controls themselves (it already
+# follows the current system appearance and Liquid Glass). We only add the few
+# things the native style does not: a source-list sidebar, a slim status strip
+# and an accent-coloured progress bar.
 _STYLE = """
-QGroupBox {
-    font-weight: 600;
-    border: 1px solid palette(mid);
-    border-radius: 8px;
-    margin-top: 10px;
-    padding: 10px 8px 8px 8px;
+#sidebar {
+    outline: 0;
+    padding: 6px 8px;
 }
-QGroupBox::title {
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    left: 10px;
-    padding: 0 4px;
-}
-QPushButton {
-    padding: 5px 12px;
+#sidebar::item {
     border-radius: 6px;
+    padding: 5px 8px;
 }
-QPushButton:default {
-    font-weight: 600;
+#sidebar::item:selected {
+    background: palette(highlight);
+    color: palette(highlighted-text);
+}
+#statusStrip {
+    border-top: 1px solid palette(mid);
+}
+#secondary {
+    color: gray;
 }
 QProgressBar {
     border: 1px solid palette(mid);
-    border-radius: 7px;
+    border-radius: 6px;
     text-align: center;
-    min-height: 16px;
+    min-height: 14px;
 }
 QProgressBar::chunk {
     background-color: palette(highlight);
-    border-radius: 6px;
-}
-QPlainTextEdit, QListWidget, QTableWidget {
-    border: 1px solid palette(mid);
-    border-radius: 6px;
-}
-QTabWidget::pane {
-    border: 1px solid palette(mid);
-    border-radius: 8px;
+    border-radius: 5px;
 }
 """
 
