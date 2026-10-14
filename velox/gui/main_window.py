@@ -14,8 +14,17 @@ import logging
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QKeySequence
+from PySide6.QtCore import QRectF, QSettings, QSize, Qt, QTimer
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QColor,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPainterPath,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -70,6 +79,38 @@ def _fmt_duration(seconds: float) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def _toolbar_icon(shape: str) -> QIcon:
+    """A crisp monochrome toolbar icon (drawn as a mask so the system tints it
+    correctly in light and dark mode)."""
+    icon = QIcon()
+    for size in (16, 32, 64):
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(Qt.GlobalColor.black)
+        if shape == "play":
+            path = QPainterPath()
+            path.moveTo(size * 0.26, size * 0.15)
+            path.lineTo(size * 0.84, size * 0.50)
+            path.lineTo(size * 0.26, size * 0.85)
+            path.closeSubpath()
+            painter.drawPath(path)
+        elif shape == "stop":
+            margin = size * 0.26
+            radius = size * 0.13
+            painter.drawRoundedRect(
+                QRectF(margin, margin, size - 2 * margin, size - 2 * margin),
+                radius,
+                radius,
+            )
+        painter.end()
+        icon.addPixmap(pixmap)
+    icon.setIsMask(True)
+    return icon
 
 
 class MainWindow(QMainWindow):
@@ -142,21 +183,13 @@ class MainWindow(QMainWindow):
         self.act_add_folder.setShortcut(QKeySequence("Ctrl+Shift+O"))
         self.act_add_folder.triggered.connect(self._add_folder)
 
-        self.act_dry = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton), "Dry Run", self
-        )
-        self.act_dry.setToolTip("Preview the plan without changing any files")
-        self.act_dry.triggered.connect(lambda: self._start(dry_run=True))
-
-        self.act_start = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "Start", self
-        )
+        self.act_start = QAction(_toolbar_icon("play"), "Start", self)
+        self.act_start.setToolTip("Start processing")
         self.act_start.setShortcut(QKeySequence("Ctrl+R"))
         self.act_start.triggered.connect(lambda: self._start(dry_run=False))
 
-        self.act_stop = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_MediaStop), "Stop", self
-        )
+        self.act_stop = QAction(_toolbar_icon("stop"), "Stop", self)
+        self.act_stop.setToolTip("Stop after the current pass")
         self.act_stop.setEnabled(False)
         self.act_stop.triggered.connect(self._stop)
 
@@ -171,7 +204,6 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         bar.addWidget(spacer)
-        bar.addAction(self.act_dry)
         bar.addAction(self.act_start)
         bar.addAction(self.act_stop)
         # Merge the toolbar with the title bar (native on macOS).
@@ -513,7 +545,6 @@ class MainWindow(QMainWindow):
 
     def _set_running(self, running: bool) -> None:
         self.act_start.setEnabled(not running)
-        self.act_dry.setEnabled(not running)
         self.act_stop.setEnabled(running)
 
     def _overall_fraction(self) -> float:
