@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import __version__
 from ..config import VeloxConfig, load_user_config, save_config, user_config_path
 from ..errors import VeloxError
 from ..events import PassEvent, fmt_bytes
@@ -116,6 +117,11 @@ class MainWindow(QMainWindow):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
         body.addWidget(self._build_sidebar())
+        divider = QFrame()
+        divider.setObjectName("divider")
+        divider.setFixedWidth(1)
+        divider.setFrameShape(QFrame.Shape.NoFrame)
+        body.addWidget(divider)
         body.addWidget(self._build_content(), 1)
         layout.addLayout(body, 1)
 
@@ -164,16 +170,42 @@ class MainWindow(QMainWindow):
         bar.addAction(self.act_dry)
         bar.addAction(self.act_start)
         bar.addAction(self.act_stop)
+        # Merge the toolbar with the title bar (native on macOS).
+        self.setUnifiedTitleAndToolBarOnMac(True)
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
         file_menu.addAction(self.act_add_files)
         file_menu.addAction(self.act_add_folder)
-        file_menu.addSeparator()
+
+        # Native macOS app-menu items (About / Settings… / Quit).
+        self.act_settings = QAction("Settings…", self)
+        self.act_settings.setMenuRole(QAction.MenuRole.PreferencesRole)
+        self.act_settings.setShortcuts(
+            [QKeySequence.StandardKey.Preferences, QKeySequence("Ctrl+,")]
+        )
+        self.act_settings.triggered.connect(lambda: self.nav.setCurrentRow(1))
+        self.addAction(self.act_settings)
+
+        self.act_about = QAction("About Velox", self)
+        self.act_about.setMenuRole(QAction.MenuRole.AboutRole)
+        self.act_about.triggered.connect(self._show_about)
+        self.addAction(self.act_about)
+
         quit_action = QAction("Quit Velox", self)
+        quit_action.setMenuRole(QAction.MenuRole.QuitRole)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
+
+    def _show_about(self) -> None:
+        QMessageBox.about(
+            self,
+            "Velox",
+            f"<b>Velox {__version__}</b><br><br>"
+            "Standalone Tdarr-style video processing.<br><br>"
+            f"ffmpeg: <code>{self.config.general.ffmpeg_path}</code>",
+        )
 
     def _build_sidebar(self) -> QWidget:
         self.nav = QListWidget()
@@ -220,7 +252,7 @@ class MainWindow(QMainWindow):
         self.file_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.file_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.file_table.setShowGrid(False)
-        self.file_table.setAlternatingRowColors(True)
+        self.file_table.setAlternatingRowColors(False)
         header = self.file_table.horizontalHeader()
         header.setSectionResizeMode(COL_FILE, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(COL_PROGRESS, QHeaderView.ResizeMode.Fixed)
@@ -267,8 +299,7 @@ class MainWindow(QMainWindow):
         self.overall_bar = QProgressBar()
         self.overall_bar.setRange(0, 1)
         self.overall_bar.setValue(0)
-        self.overall_bar.setTextVisible(True)
-        self.overall_bar.setFormat("%v / %m files")
+        self.overall_bar.setTextVisible(False)
         layout.addWidget(self.overall_bar)
 
         self.details_button = QToolButton()
@@ -340,8 +371,7 @@ class MainWindow(QMainWindow):
         bar = QProgressBar()
         bar.setRange(0, 100)
         bar.setValue(0)
-        bar.setTextVisible(True)
-        bar.setFormat("%p%")
+        bar.setTextVisible(False)
         self.file_table.setCellWidget(row, COL_PROGRESS, bar)
 
         self.file_table.setItem(row, COL_STEP, QTableWidgetItem("Queued"))
@@ -627,7 +657,6 @@ class MainWindow(QMainWindow):
         self.config.general.ffprobe_path = tools.ffprobe_path
         self.settings.ffmpeg_path.setText(tools.ffmpeg_path)
         self.settings.ffprobe_path.setText(tools.ffprobe_path)
-        self.statusBar().showMessage(f"ffmpeg: {tools.ffmpeg_path}")
         self._log(f"ffmpeg: {tools.ffmpeg_path}")
 
     def _locate_ffmpeg(self) -> None:

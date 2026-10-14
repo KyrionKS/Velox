@@ -4,41 +4,24 @@ from __future__ import annotations
 
 import faulthandler
 import sys
+from pathlib import Path
+
+from .. import __version__
 
 __all__ = ["main"]
 
-# Rely on the native macOS style for the controls themselves (it already
-# follows the current system appearance and Liquid Glass). We only add the few
-# things the native style does not: a source-list sidebar, a slim status strip
-# and an accent-coloured progress bar.
+# Deliberately minimal: the native macOS style draws the controls (progress
+# bars, sidebar selection, buttons) with the system appearance, accent colour
+# and Liquid Glass. We only add a hairline divider and a muted secondary label.
 _STYLE = """
-#sidebar {
-    outline: 0;
-    padding: 6px 8px;
-}
-#sidebar::item {
-    border-radius: 6px;
-    padding: 5px 8px;
-}
-#sidebar::item:selected {
-    background: palette(highlight);
-    color: palette(highlighted-text);
+#divider {
+    background: palette(mid);
 }
 #statusStrip {
     border-top: 1px solid palette(mid);
 }
 #secondary {
     color: gray;
-}
-QProgressBar {
-    border: 1px solid palette(mid);
-    border-radius: 6px;
-    text-align: center;
-    min-height: 14px;
-}
-QProgressBar::chunk {
-    background-color: palette(highlight);
-    border-radius: 5px;
 }
 """
 
@@ -55,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sys.excepthook = _excepthook
 
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
     from .main_window import MainWindow
@@ -62,8 +46,13 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication.instance() or QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("Velox")
     app.setApplicationDisplayName("Velox")
+    app.setApplicationVersion(__version__)
     app.setOrganizationName("Velox")
     app.setStyleSheet(_STYLE)
+
+    icon_path = Path(__file__).resolve().parents[2] / "assets" / "icon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     window = MainWindow()
     window.show()

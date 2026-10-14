@@ -94,6 +94,9 @@ copy, or `--output-dir DIR` to leave the originals untouched entirely.
 
 A native macOS window built around a **sidebar** (Files · Settings · Results)
 with the actions in a toolbar, following the current macOS layout conventions:
+the toolbar is unified with the title bar, the controls use the native system
+appearance (accent colour, dark mode, Liquid Glass), and the app menu has
+**Settings… (⌘,)** and **About Velox**. An app icon ships in `assets/`.
 
 - **Toolbar** — Add Files / Add Folder, and Start / Dry Run / Stop.
 - **Files** — a table with **one row per file** (progress, current step, result).
