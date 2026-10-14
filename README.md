@@ -96,10 +96,12 @@ A native macOS window built around a **sidebar** (Files · Settings · Results)
 with the actions in a toolbar, following the current macOS layout conventions:
 
 - **Toolbar** — Add Files / Add Folder, and Start / Dry Run / Stop.
-- **Files** — add files or a whole folder with the native Finder dialog.
+- **Files** — a table with **one row per file** (progress, current step, result).
+  Several files are processed **in parallel** (`Parallel files`, default 2).
 - **Settings** — Basic and Advanced, left-aligned and scrollable so nothing is
   cut off: quality preset, bitrate mode, audio (incl. default track),
-  subtitles, encoder, output, and advanced limits / per-step toggles.
+  subtitles, encoder, output, and advanced limits / performance / per-step
+  toggles.
 - **Results** — one row per ffmpeg pass with the space it saved, plus a total.
 
 The always-visible status strip shows the current file (x of y), the running
@@ -134,6 +136,9 @@ See `config.example.toml` for the recommended Apple Silicon setup and every
 option with comments. Key settings:
 
 - `clean_audio.language = "eng,und"`
+- `general.concurrency = 2` — how many files are processed at the same time
+  (`--jobs N` on the CLI; 1 = sequential). On Apple Silicon 2 is a good default;
+  the VideoToolbox engine serialises beyond a few concurrent transcodes.
 - `clean_audio.default_audio = "eng"` — which kept audio track becomes the
   container/player default (`""` = unchanged, `"first"`, `"best"`, or a
   language code)

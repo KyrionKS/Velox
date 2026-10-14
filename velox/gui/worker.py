@@ -1,16 +1,17 @@
 """Background worker that runs the pipeline off the GUI thread.
 
-We deliberately use a plain Python thread (not ``QThread``) and emit Qt signals
-from it.  Emitting signals from a non-GUI thread is thread-safe in Qt/PySide and
-the GUI connections are made with ``Qt.QueuedConnection``, so widget updates
-always happen on the main thread.  This avoids the classic ``QThread`` +
-``deleteLater`` lifetime crashes.
+Files are processed concurrently (``concurrency``, default 2).  Each file gets
+its own :class:`ProgressObserver` that tags every event with the file path, so
+the GUI can show one row per file.  A plain Python thread pool is used and Qt
+signals are emitted from those threads; the GUI connections use
+``Qt.QueuedConnection`` so widget updates always happen on the main thread.
 """
 
 from __future__ import annotations
 
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -22,32 +23,30 @@ from ..events import PassEvent, ProgressObserver
 from ..pipeline import Pipeline, RunReport
 
 
-class _QtObserver(ProgressObserver):
-    """Forwards pipeline callbacks to Qt signals."""
+class _FileObserver(ProgressObserver):
+    """Pipeline callbacks for one file, forwarded as Qt signals with its path."""
 
-    def __init__(self, worker: "PipelineWorker") -> None:
+    def __init__(self, worker: "PipelineWorker", source: Path) -> None:
         self.worker = worker
-
-    def on_run_started(self, files: list[Path]) -> None:
-        self.worker.run_started.emit(len(files))
+        self.source = str(source)
 
     def on_file_started(self, path: Path, summary: str) -> None:
         self.worker.file_started.emit(str(path), summary)
 
     def on_step_started(self, key: str, name: str) -> None:
-        self.worker.step_started.emit(name)
+        self.worker.file_step.emit(self.source, name)
 
     def on_step_note(self, message: str) -> None:
         self.worker.note.emit(message)
 
     def on_pass_started(self, description: str) -> None:
-        self.worker.pass_started.emit(description)
+        self.worker.file_pass.emit(self.source, description)
 
     def on_progress(self, fraction: float) -> None:
-        self.worker.progress.emit(float(fraction))
+        self.worker.file_progress.emit(self.source, float(fraction))
 
     def on_pass_finished(self, event: PassEvent) -> None:
-        self.worker.pass_finished.emit(event)
+        self.worker.pass_finished.emit(self.source, event)
 
     def on_file_finished(self, report: RunReport) -> None:
         self.worker.file_finished.emit(report)
@@ -59,13 +58,13 @@ class _QtObserver(ProgressObserver):
 class PipelineWorker(QObject):
     run_started = Signal(int)
     file_started = Signal(str, str)
-    step_started = Signal(str)
-    note = Signal(str)
-    pass_started = Signal(str)
-    progress = Signal(float)
-    pass_finished = Signal(object)
+    file_step = Signal(str, str)
+    file_pass = Signal(str, str)
+    file_progress = Signal(str, float)
+    pass_finished = Signal(str, object)  # path, PassEvent
     file_finished = Signal(object)
     run_finished = Signal(object)  # list[RunReport]
+    note = Signal(str)
     failed = Signal(str)
 
     def __init__(self, config: VeloxConfig, files: list[Path], dry_run: bool) -> None:
@@ -73,6 +72,7 @@ class PipelineWorker(QObject):
         self.config = config
         self.files = [Path(f) for f in files]
         self.dry_run = dry_run
+        self.concurrency = max(1, int(getattr(config.general, "concurrency", 1) or 1))
         self._cancel = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -98,7 +98,7 @@ class PipelineWorker(QObject):
     # ------------------------------------------------------------------- work
     def run(self) -> None:
         """Run the pipeline.  Safe to call directly (e.g. in tests)."""
-        reports: list[Any] = []
+        reports: list[RunReport] = []
         logger = logging.getLogger("velox.gui")
         logger.handlers.clear()
         logger.addHandler(logging.NullHandler())
@@ -111,20 +111,20 @@ class PipelineWorker(QObject):
                 self.failed.emit(str(exc))
                 return
 
-            observer = _QtObserver(self)
-            observer.on_run_started(self.files)
-            for file in self.files:
-                if self._cancel.is_set():
-                    break
-                reports.append(
-                    pipeline.process(
-                        file,
-                        dry_run=self.dry_run,
-                        observer=observer,
-                        cancel=self._cancel.is_set,
-                    )
+            self.run_started.emit(len(self.files))
+
+            def task(path: Path) -> RunReport:
+                observer = _FileObserver(self, path)
+                return pipeline.process(
+                    path,
+                    dry_run=self.dry_run,
+                    observer=observer,
+                    cancel=self._cancel.is_set,
                 )
-            observer.on_run_finished(reports)
+
+            workers = min(self.concurrency, max(1, len(self.files)))
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="velox") as pool:
+                reports = list(pool.map(task, self.files))
         except Exception as exc:  # pragma: no cover - defensive
             self.failed.emit(f"{type(exc).__name__}: {exc}")
         finally:

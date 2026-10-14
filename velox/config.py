@@ -59,12 +59,14 @@ class GeneralConfig:
     output_dir: str | None = None
     # Scratch directory for the temporary files written during processing.
     #   "source" (default) -> a hidden folder next to each source file, i.e. on
-    #                         the same volume (e.g. your NAS). Large temp files
-    #                         never touch the Mac's SSD and the final rename is
-    #                         free (no copy).
+    #                         the same volume (e.g. your NAS).
     #   "/path/to/scratch" -> use this directory instead. Supports the
     #                         placeholders {source_dir} and {source_name}.
     temp_dir: str = "source"
+    # How many files to process at the same time. 1 = sequential.
+    # On Apple Silicon the VideoToolbox engine serialises beyond ~2-3 concurrent
+    # transcodes, so 2 is a good default.
+    concurrency: int = 2
     # Also process files that are not detected as video (default: skip).
     process_non_video: bool = False
 

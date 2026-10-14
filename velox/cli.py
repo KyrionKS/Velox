@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
@@ -21,13 +22,15 @@ DEFAULT_EXTENSIONS = {
 
 
 class _CliObserver(ProgressObserver):
-    """Prints per-pass size savings in addition to the normal log output."""
+    """Prefixes per-pass size savings with the file name (parallel-friendly)."""
 
-    def __init__(self, logger) -> None:
+    def __init__(self, logger, source: str | Path | None = None) -> None:
         self.log = logger
+        self.source = Path(source) if source is not None else None
 
     def on_pass_finished(self, event) -> None:  # noqa: ANN001
-        self.log.info("   ✓ %s", event.describe())
+        prefix = f"{self.source.name}: " if self.source is not None else ""
+        self.log.info("   ✓ %s%s", prefix, event.describe())
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +92,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--bpp", type=float,
         help="Bits per pixel for tier mode for this run (implies --mode tier).",
+    )
+    parser.add_argument(
+        "-j", "--jobs", type=int,
+        help="Process this many files in parallel (default from the config).",
     )
     parser.add_argument(
         "--ffmpeg", help="Path to the ffmpeg binary (overrides config)."
@@ -207,6 +214,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.bpp is not None:
         config.hevc_gpu.bits_per_pixel = args.bpp
         config.hevc_gpu.bitrate_mode = "tier"
+    if args.jobs is not None:
+        config.general.concurrency = max(1, args.jobs)
     _apply_plugin_selection(config, args.only, args.skip)
 
     if not args.paths:
@@ -243,14 +252,20 @@ def main(argv: list[str] | None = None) -> int:
     log.info("Velox %s - pipeline: %s", __version__, " → ".join(active) or "(empty)")
     if args.dry_run:
         log.info("Dry run: no files will be modified.")
-    log.info("Files to process: %d", len(files))
+    jobs = max(1, int(getattr(config.general, "concurrency", 1) or 1))
+    workers = min(jobs, max(1, len(files)))
+    log.info("Files to process: %d (%d at a time)", len(files), workers)
 
-    reports: list[RunReport] = []
-    observer = _CliObserver(log)
-    observer.on_run_started(files)
-    for file in files:
-        reports.append(pipeline.process(file, dry_run=args.dry_run, observer=observer))
-    observer.on_run_finished(reports)
+    def run_one(file: Path) -> RunReport:
+        return pipeline.process(
+            file, dry_run=args.dry_run, observer=_CliObserver(log, file)
+        )
+
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            reports = list(pool.map(run_one, files))
+    else:
+        reports = [run_one(file) for file in files]
 
     # ------------------------------------------------------------------ summary
     modified = sum(1 for r in reports if r.ok and r.modified)

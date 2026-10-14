@@ -24,6 +24,8 @@ output_dir = ""
 #                         makes the final step a free rename instead of a copy.
 #   "/path/to/scratch" -> use this directory (supports {source_dir}).
 temp_dir = "source"
+# How many files to process at the same time (1 = sequential).
+concurrency = 2
 # Also process files without a video stream.
 process_non_video = false
 

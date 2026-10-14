@@ -1,12 +1,11 @@
 """The Velox main window (macOS-oriented layout).
 
-Follows the current macOS settings/Sidebar pattern:
-
 * a toolbar holds the actions (Add files/folder, Start, Dry run, Stop);
-* the main area is a source-list **sidebar** + content pane
-  (Files / Settings / Results);
-* the bottom is a slim, secondary progress/status strip (with a collapsible
-  Details log) rather than the primary action area.
+* a source-list **sidebar** switches between Files / Settings / Results;
+* the Files page is a table with **one row per file** (progress, current step,
+  result) so several files can be processed at the same time;
+* a slim status strip at the bottom shows the overall progress and a
+  collapsible Details log.
 """
 
 from __future__ import annotations
@@ -16,12 +15,13 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -33,6 +33,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStackedWidget,
     QStyle,
+    QTableWidget,
+    QTableWidgetItem,
     QToolBar,
     QToolButton,
     QVBoxLayout,
@@ -58,6 +60,7 @@ FILE_FILTER = (
 )
 
 SIDEBAR_WIDTH = 190
+COL_FILE, COL_PROGRESS, COL_STEP, COL_RESULT = range(4)
 
 
 def _fmt_duration(seconds: float) -> str:
@@ -73,18 +76,20 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Velox")
-        self.setMinimumSize(820, 560)
-        self.resize(1040, 720)
+        self.setMinimumSize(860, 580)
+        self.resize(1080, 740)
         self.config: VeloxConfig = load_user_config()
         self._worker: PipelineWorker | None = None
         self._files_total = 0
         self._files_done = 0
-        self._current_file = ""
-        self._step_text = ""
-        self._pass_active = False
-        self._pass_started_at: float | None = None
         self._run_started_at: float | None = None
         self._qsettings = QSettings("Velox", "Velox")
+
+        # per-file state, keyed by the full path
+        self._rows: dict[str, int] = {}
+        self._bars: dict[str, QProgressBar] = {}
+        self._step: dict[str, str] = {}
+        self._pass_started: dict[str, float | None] = {}
 
         self._elapsed_timer = QTimer(self)
         self._elapsed_timer.setInterval(1000)
@@ -118,7 +123,6 @@ class MainWindow(QMainWindow):
 
     def _build_actions(self) -> None:
         style = self.style()
-
         self.act_add_files = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton), "Add Files…", self
         )
@@ -210,14 +214,20 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(8)
 
-        heading = QLabel("Files to process")
-        self._make_heading(heading)
-        layout.addWidget(heading)
-
-        self.file_list = QListWidget()
-        self.file_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.file_list.setAlternatingRowColors(True)
-        layout.addWidget(self.file_list, 1)
+        self.file_table = QTableWidget(0, 4)
+        self.file_table.setHorizontalHeaderLabels(["File", "Progress", "Step", "Result"])
+        self.file_table.verticalHeader().setVisible(False)
+        self.file_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.file_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.file_table.setShowGrid(False)
+        self.file_table.setAlternatingRowColors(True)
+        header = self.file_table.horizontalHeader()
+        header.setSectionResizeMode(COL_FILE, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(COL_PROGRESS, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(COL_STEP, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(COL_RESULT, QHeaderView.ResizeMode.ResizeToContents)
+        self.file_table.setColumnWidth(COL_PROGRESS, 150)
+        layout.addWidget(self.file_table, 1)
 
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
@@ -225,7 +235,7 @@ class MainWindow(QMainWindow):
             ("Add Files…", self._add_files),
             ("Add Folder…", self._add_folder),
             ("Remove", self._remove_selected),
-            ("Clear", lambda: self.file_list.clear()),
+            ("Clear", self._clear_files),
         ):
             button = QPushButton(label)
             button.clicked.connect(slot)
@@ -242,39 +252,24 @@ class MainWindow(QMainWindow):
         layout.setSpacing(5)
 
         header = QHBoxLayout()
-        self.current_label = QLabel("Idle")
-        self.current_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        font = self.current_label.font()
+        self.status_label = QLabel("Idle")
+        self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        font = self.status_label.font()
         font.setBold(True)
-        self.current_label.setFont(font)
+        self.status_label.setFont(font)
         self.count_label = QLabel("")
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.count_label.setObjectName("secondary")
-        header.addWidget(self.current_label, 1)
+        header.addWidget(self.status_label, 1)
         header.addWidget(self.count_label)
         layout.addLayout(header)
 
-        self.file_bar = QProgressBar()
-        self.file_bar.setRange(0, 100)
-        self.file_bar.setValue(0)
-        self.file_bar.setTextVisible(True)
-        self.file_bar.setFormat("%p%")
-        layout.addWidget(self.file_bar)
-
-        self.step_label = QLabel("Ready — add files, then press Start.")
-        self.step_label.setObjectName("secondary")
-        layout.addWidget(self.step_label)
-
-        overall = QHBoxLayout()
-        overall.setSpacing(8)
-        overall.addWidget(QLabel("Overall"))
         self.overall_bar = QProgressBar()
         self.overall_bar.setRange(0, 1)
         self.overall_bar.setValue(0)
         self.overall_bar.setTextVisible(True)
         self.overall_bar.setFormat("%v / %m files")
-        overall.addWidget(self.overall_bar, 1)
-        layout.addLayout(overall)
+        layout.addWidget(self.overall_bar)
 
         self.details_button = QToolButton()
         self.details_button.setText("Details")
@@ -292,12 +287,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log)
         return strip
 
-    @staticmethod
-    def _make_heading(label: QLabel) -> None:
-        font = label.font()
-        font.setBold(True)
-        label.setFont(font)
-
     def _on_nav_changed(self, row: int) -> None:
         self.stack.setCurrentIndex(row)
 
@@ -307,21 +296,14 @@ class MainWindow(QMainWindow):
             Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
         )
 
-    # ------------------------------------------------------------------ files
+    # ------------------------------------------------------------ file table
     def _add_paths(self, paths: list[str]) -> None:
-        existing = {
-            self.file_list.item(i).data(Qt.ItemDataRole.UserRole)
-            for i in range(self.file_list.count())
-        }
         added = 0
         for raw in paths:
             path = str(Path(raw))
-            if path in existing:
+            if path in self._rows:
                 continue
-            item = QListWidgetItem(path)
-            item.setData(Qt.ItemDataRole.UserRole, path)
-            self.file_list.addItem(item)
-            existing.add(path)
+            self._insert_row(path)
             added += 1
         if added:
             self._log(f"Added {added} file(s).")
@@ -347,15 +329,84 @@ class MainWindow(QMainWindow):
             return
         self._add_paths(found)
 
+    def _insert_row(self, path: str) -> None:
+        row = self.file_table.rowCount()
+        self.file_table.insertRow(row)
+
+        name = QTableWidgetItem(Path(path).name)
+        name.setToolTip(path)
+        self.file_table.setItem(row, COL_FILE, name)
+
+        bar = QProgressBar()
+        bar.setRange(0, 100)
+        bar.setValue(0)
+        bar.setTextVisible(True)
+        bar.setFormat("%p%")
+        self.file_table.setCellWidget(row, COL_PROGRESS, bar)
+
+        self.file_table.setItem(row, COL_STEP, QTableWidgetItem("Queued"))
+        self.file_table.setItem(row, COL_RESULT, QTableWidgetItem(""))
+
+        self._rows[path] = row
+        self._bars[path] = bar
+        self._step[path] = ""
+        self._pass_started[path] = None
+
+    def _rebuild_rows(self) -> None:
+        mapping: dict[str, int] = {}
+        for row in range(self.file_table.rowCount()):
+            item = self.file_table.item(row, COL_FILE)
+            if item is None:
+                continue
+            path = item.toolTip()
+            mapping[path] = row
+        self._rows = mapping
+
     def _remove_selected(self) -> None:
-        for item in self.file_list.selectedItems():
-            self.file_list.takeItem(self.file_list.row(item))
+        rows = sorted({index.row() for index in self.file_table.selectedIndexes()}, reverse=True)
+        for row in rows:
+            self.file_table.removeRow(row)
+        self._rebuild_rows()
+
+    def _clear_files(self) -> None:
+        self.file_table.setRowCount(0)
+        self._rows.clear()
+        self._bars.clear()
+        self._step.clear()
+        self._pass_started.clear()
 
     def selected_files(self) -> list[str]:
-        return [
-            self.file_list.item(i).data(Qt.ItemDataRole.UserRole)
-            for i in range(self.file_list.count())
-        ]
+        files = []
+        for row in range(self.file_table.rowCount()):
+            item = self.file_table.item(row, COL_FILE)
+            if item is not None:
+                files.append(item.toolTip())
+        return files
+
+    def _row_of(self, path: str) -> int | None:
+        return self._rows.get(path)
+
+    def _set_step(self, path: str, text: str) -> None:
+        row = self._row_of(path)
+        if row is None:
+            return
+        item = self.file_table.item(row, COL_STEP)
+        if item is not None:
+            item.setText(text)
+
+    def _set_result(self, path: str, text: str, color: str | None = None) -> None:
+        row = self._row_of(path)
+        if row is None:
+            return
+        item = self.file_table.item(row, COL_RESULT)
+        if item is None:
+            return
+        item.setText(text)
+        if color:
+            item.setForeground(QColor(color))
+
+    def _bar_of(self, path: str) -> QProgressBar | None:
+        return self._bars.get(path)
 
     # ------------------------------------------------------------------- run
     def _start(self, *, dry_run: bool) -> None:
@@ -372,32 +423,43 @@ class MainWindow(QMainWindow):
         except OSError as exc:  # pragma: no cover - best effort
             self._log(f"Could not save settings: {exc}")
 
+        # reset the per-file rows
+        for path in self._rows:
+            self._step[path] = ""
+            self._pass_started[path] = None
+            self._set_step(path, "Queued")
+            self._set_result(path, "")
+            bar = self._bar_of(path)
+            if bar is not None:
+                bar.setRange(0, 100)
+                bar.setValue(0)
+
         self.results.clear()
         self.log.clear()
         self._files_total = len(files)
         self._files_done = 0
-        self._pass_active = False
-        self._pass_started_at = None
         self._run_started_at = time.monotonic()
         self.overall_bar.setRange(0, self._files_total)
         self.overall_bar.setValue(0)
-        self.current_label.setText("Preparing…")
-        self._set_busy(True)
-        self._show_step("Preparing…")
+        self.status_label.setText("Starting…")
         self.count_label.setText(f"0 of {self._files_total}")
         self._set_running(True)
         self._elapsed_timer.start()
-        self._log(("Dry run — " if dry_run else "") + f"Starting {len(files)} file(s)…")
+        concurrency = max(1, int(getattr(self.config.general, "concurrency", 1) or 1))
+        self._log(
+            ("Dry run — " if dry_run else "")
+            + f"Starting {len(files)} file(s), {concurrency} at a time…"
+        )
 
         worker = PipelineWorker(self.config, [Path(f) for f in files], dry_run)
         queued = Qt.ConnectionType.QueuedConnection
         worker.run_started.connect(self._on_run_started, queued)
         worker.file_started.connect(self._on_file_started, queued)
-        worker.step_started.connect(self._on_step_started, queued)
-        worker.note.connect(self._log, queued)
-        worker.pass_started.connect(self._on_pass_started, queued)
-        worker.progress.connect(self._on_progress, queued)
+        worker.file_step.connect(self._on_file_step, queued)
+        worker.file_pass.connect(self._on_file_pass, queued)
+        worker.file_progress.connect(self._on_file_progress, queued)
         worker.pass_finished.connect(self._on_pass_finished, queued)
+        worker.note.connect(self._log, queued)
         worker.file_finished.connect(self._on_file_finished, queued)
         worker.failed.connect(self._on_failed, queued)
         worker.run_finished.connect(self._on_run_finished, queued)
@@ -419,26 +481,11 @@ class MainWindow(QMainWindow):
         self.act_dry.setEnabled(not running)
         self.act_stop.setEnabled(running)
 
-    def _set_busy(self, busy: bool) -> None:
-        """Indeterminate bar between passes, determinate while a pass runs."""
-        if busy:
-            self.file_bar.setRange(0, 0)
-        else:
-            self.file_bar.setRange(0, 100)
-
-    def _show_step(self, text: str) -> None:
-        """Set the always-visible 'what is happening now' line."""
-        self._step_text = text
-        self.step_label.setText(f"▶ {text}")
-
     def _update_elapsed(self) -> None:
         if self._run_started_at is None:
             return
         elapsed = _fmt_duration(time.monotonic() - self._run_started_at)
-        self.count_label.setText(
-            f"File {min(self._files_done + 1, self._files_total)} of "
-            f"{self._files_total}  ·  {elapsed}"
-        )
+        self.count_label.setText(f"{self._files_done} of {self._files_total}  ·  {elapsed}")
 
     # --------------------------------------------------------------- signals
     def _on_run_started(self, total: int) -> None:
@@ -447,71 +494,87 @@ class MainWindow(QMainWindow):
         self._update_elapsed()
 
     def _on_file_started(self, path: str, summary: str) -> None:
-        self._current_file = Path(path).name
-        self.current_label.setText(self._current_file)
-        self._pass_active = False
-        self._pass_started_at = None
-        self._set_busy(True)
-        self._show_step("Analysing streams…")
-        self._update_elapsed()
-        self._log(f"— {self._current_file}: {summary}")
+        self._step[path] = "Analysing streams…"
+        self._pass_started[path] = None
+        self._set_step(path, "Analysing streams…")
+        bar = self._bar_of(path)
+        if bar is not None:
+            bar.setRange(0, 0)
+        self._log(f"— {Path(path).name}: {summary}")
 
-    def _on_step_started(self, name: str) -> None:
-        self._pass_active = False
-        self._pass_started_at = None
-        self._set_busy(True)
-        self._show_step(name)
-        self._log(f"[{name}]")
+    def _on_file_step(self, path: str, text: str) -> None:
+        self._step[path] = text
+        self._pass_started[path] = None
+        self._set_step(path, text)
+        bar = self._bar_of(path)
+        if bar is not None:
+            bar.setRange(0, 0)
 
-    def _on_pass_started(self, description: str) -> None:
-        self._pass_active = True
-        self._pass_started_at = time.monotonic()
-        self._set_busy(False)
-        self.file_bar.setValue(0)
-        self._show_step(description)
-        self._log(f"▶ {description}")
+    def _on_file_pass(self, path: str, text: str) -> None:
+        self._step[path] = text
+        self._pass_started[path] = time.monotonic()
+        self._set_step(path, text)
+        bar = self._bar_of(path)
+        if bar is not None:
+            bar.setRange(0, 100)
+            bar.setValue(0)
+        self._log(f"▶ {Path(path).name}: {text}")
 
-    def _on_progress(self, fraction: float) -> None:
+    def _on_file_progress(self, path: str, fraction: float) -> None:
         fraction = max(0.0, min(1.0, fraction))
-        if not self._pass_active:
-            self._pass_active = True
-            self._pass_started_at = time.monotonic()
-            self._set_busy(False)
-        self.file_bar.setValue(int(fraction * 100))
-        if self._pass_started_at is not None and fraction > 0.02:
-            elapsed = time.monotonic() - self._pass_started_at
+        bar = self._bar_of(path)
+        if bar is not None:
+            if bar.maximum() == 0:
+                bar.setRange(0, 100)
+            bar.setValue(int(fraction * 100))
+        step = self._step.get(path, "")
+        started = self._pass_started.get(path)
+        if started is not None and fraction > 0.02:
+            elapsed = time.monotonic() - started
             remaining = elapsed * (1.0 - fraction) / fraction
-            self.step_label.setText(
-                f"▶ {self._step_text}  ·  {int(fraction * 100)}%  ·  "
-                f"~{_fmt_duration(remaining)} left"
-            )
+            self._set_step(path, f"{step}  ·  {int(fraction * 100)}%  ·  ~{_fmt_duration(remaining)} left")
         else:
-            self.step_label.setText(f"▶ {self._step_text}  ·  {int(fraction * 100)}%")
+            self._set_step(path, f"{step}  ·  {int(fraction * 100)}%")
 
-    def _on_pass_finished(self, event: PassEvent) -> None:
-        self._pass_active = False
-        self.results.add_pass(self._current_file or "?", event)
-        self._log(f"   ✓ {event.describe()}")
+    def _on_pass_finished(self, path: str, event: PassEvent) -> None:
+        self.results.add_pass(Path(path).name, event)
+        self._log(f"   ✓ {Path(path).name}: {event.describe()}")
 
     def _on_file_finished(self, report: RunReport) -> None:
+        path = str(report.source)
         self.results.add_report(report)
         self._files_done += 1
         self.overall_bar.setValue(self._files_done)
         self._update_elapsed()
+
+        bar = self._bar_of(path)
+        if bar is not None:
+            bar.setRange(0, 100)
+            bar.setValue(100 if report.ok else 0)
+
         if report.cancelled:
-            self._log(f"■ {report.source.name}: stopped")
+            self._set_step(path, "Stopped")
+            self._set_result(path, "stopped", "#c62828")
         elif report.error:
-            self._log(f"✗ {report.source.name}: {report.error}")
+            self._set_step(path, report.error)
+            self._set_result(path, "error", "#c62828")
+            self._log(f"✗ {Path(path).name}: {report.error}")
         elif report.skipped:
-            self._log(f"⏭ {report.source.name}: skipped ({report.reason})")
+            self._set_step(path, "Skipped")
+            self._set_result(path, "skipped")
+            self._log(f"⏭ {Path(path).name}: skipped ({report.reason})")
         elif report.modified:
+            self._set_step(path, "Done")
+            self._set_result(path, f"−{fmt_bytes(report.saved_bytes)}", "#2e7d32")
             self._log(
-                f"✓ {report.source.name}: {fmt_bytes(report.original_bytes)} → "
+                f"✓ {Path(path).name}: {fmt_bytes(report.original_bytes)} → "
                 f"{fmt_bytes(report.final_bytes)} (saved {fmt_bytes(report.saved_bytes)}, "
                 f"{report.saved_percent:.1f}%)"
             )
         else:
-            self._log(f"= {report.source.name}: nothing to change")
+            self._set_step(path, "Nothing to change")
+            self._set_result(path, "unchanged")
+            self._log(f"= {Path(path).name}: nothing to change")
 
     def _on_failed(self, message: str) -> None:
         self._log(f"✗ {message}")
@@ -520,11 +583,8 @@ class MainWindow(QMainWindow):
         self._set_running(False)
         self._elapsed_timer.stop()
         self._run_started_at = None
-        self._pass_active = False
-        self._set_busy(False)
-        self.file_bar.setValue(100)
         failed = [r for r in reports if not r.ok and not r.cancelled]
-        self.step_label.setText(
+        self.status_label.setText(
             "Finished." if not failed else f"Finished with {len(failed)} error(s)."
         )
         self.count_label.setText(f"{self._files_done} of {self._files_total}")
@@ -600,5 +660,5 @@ class MainWindow(QMainWindow):
         worker = self._worker
         if worker is not None:
             worker.cancel()
-            worker.join(5000)
+            worker.join(10000)
         event.accept()

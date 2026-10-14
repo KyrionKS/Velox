@@ -457,14 +457,71 @@ def test_gui_worker_emits_signals(tmp_path: Path, qapp):
     config.standardise_audio.enabled = False
 
     worker = PipelineWorker(config, [source], False)
-    passes: list = []
+    finished: list = []
     reports: list = []
-    worker.pass_finished.connect(passes.append)
+    worker.file_finished.connect(finished.append)
+    worker.run_finished.connect(reports.append)
+    worker.run()
+    qapp.processEvents()  # deliver signals emitted from the worker threads
+
+    assert finished, "worker should emit file_finished"
+    assert reports and reports[0] and reports[0][0].ok
+
+
+def test_pipeline_process_is_thread_safe(tmp_path: Path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    files = []
+    for name in ("a.mkv", "b.mkv"):
+        path = tmp_path / name
+        _make_messy_sample(path)
+        files.append(path)
+
+    pipeline = Pipeline(_no_backup_config())
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        reports = list(pool.map(pipeline.process, files))
+
+    assert all(r.ok and r.modified for r in reports)
+    assert all(not list(tmp_path.glob(".velox-*")) for _ in [0])
+
+
+def test_worker_processes_files_concurrently(tmp_path: Path, qapp):
+    from velox.gui.worker import PipelineWorker
+
+    files = []
+    for name in ("a.mkv", "b.mkv"):
+        path = tmp_path / name
+        _make_messy_sample(path)
+        files.append(path)
+
+    config = _no_backup_config()
+    config.general.concurrency = 2
+    worker = PipelineWorker(config, files, False)
+    reports: list = []
     worker.run_finished.connect(reports.append)
     worker.run()
 
-    assert passes, "worker should emit pass events"
-    assert reports and reports[0] and reports[0][0].ok
+    assert reports and len(reports[0]) == 2
+    assert all(r.ok and r.modified for r in reports[0])
+
+
+def test_cli_jobs_parallel(tmp_path: Path):
+    from velox import cli
+
+    files = []
+    for name in ("a.mkv", "b.mkv"):
+        path = tmp_path / name
+        _make_messy_sample(path)
+        files.append(path)
+
+    code = cli.main(
+        ["--ffmpeg", FFMPEG, "--ffprobe", FFPROBE, "--jobs", "2",
+         "--only", "clean_audio", *[str(f) for f in files]]
+    )
+    assert code == 0
+    assert not list(tmp_path.glob(".velox-*"))
+    assert not list(tmp_path.glob("*.velox-orig.*"))
+
 
 
 

@@ -300,6 +300,16 @@ class SettingsPanel(QWidget):
         zform.addRow("Maximum size", self.max_size)
         layout.addWidget(self._group("Size check", zform))
 
+        perf_form = QFormLayout()
+        self.concurrency = _spin(1, 8, 2)
+        self.concurrency.setToolTip(
+            "How many files to process at the same time.\n"
+            "2 is a good default on Apple Silicon (the media engine serialises\n"
+            "beyond a few concurrent transcodes)."
+        )
+        perf_form.addRow("Parallel files", self.concurrency)
+        layout.addWidget(self._group("Performance", perf_form))
+
         pform = QFormLayout()
         self.plugin_boxes: dict[str, QCheckBox] = {}
         for key in DEFAULT_ORDER:
@@ -394,6 +404,7 @@ class SettingsPanel(QWidget):
         self.lower_bound.setValue(config.file_size_check.lower_bound)
         self.min_size.setValue(config.file_size_check.min_size_mb)
         self.max_size.setValue(config.file_size_check.max_size_mb)
+        self.concurrency.setValue(int(getattr(general, "concurrency", 2) or 2))
         for key, box in self.plugin_boxes.items():
             box.setChecked(config.plugin(key).enabled)
         self.ffmpeg_path.setText(general.ffmpeg_path)
@@ -442,6 +453,7 @@ class SettingsPanel(QWidget):
         config.file_size_check.lower_bound = self.lower_bound.value()
         config.file_size_check.min_size_mb = self.min_size.value()
         config.file_size_check.max_size_mb = self.max_size.value()
+        config.general.concurrency = max(1, self.concurrency.value())
         for key, box in self.plugin_boxes.items():
             config.plugin(key).enabled = box.isChecked()
         config.general.ffmpeg_path = self.ffmpeg_path.text().strip() or "ffmpeg"
