@@ -98,10 +98,11 @@ A native macOS window with three tabs:
   bounds, per-step enable/disable, ffmpeg location).
 - **Results** — one row per ffmpeg pass with the space it saved, plus a total.
 
-The window shows live progress (overall + current file), which step is running,
-and a log. *Dry run* previews without writing anything; *Stop* cancels safely
-(the original is never left half-processed). Settings are stored in
-`~/Library/Application Support/Velox/config.toml`.
+The window shows live progress — the current file (x of y), the running step
+with percentage and an estimated time left, and an overall bar — plus a
+collapsible *Details* log. *Dry run* previews without writing anything; *Stop*
+cancels safely (the original is never left half-processed). Settings are stored
+in `~/Library/Application Support/Velox/config.toml`.
 
 ### Installing / starting on macOS
 

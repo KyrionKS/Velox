@@ -87,6 +87,9 @@ class SettingsPanel(QWidget):
         layout.addWidget(tabs)
 
     def _group(self, title: str, form: QFormLayout) -> QGroupBox:
+        form.setVerticalSpacing(6)
+        form.setHorizontalSpacing(12)
+        form.setContentsMargins(6, 6, 6, 6)
         box = QGroupBox(title)
         box.setLayout(form)
         return box

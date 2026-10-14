@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
@@ -21,16 +22,12 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ..config import (
-    VeloxConfig,
-    load_user_config,
-    save_config,
-    user_config_path,
-)
+from ..config import VeloxConfig, load_user_config, save_config, user_config_path
 from ..errors import VeloxError
 from ..events import PassEvent, fmt_bytes
 from ..ffmpeg import FFmpegTools
@@ -49,16 +46,33 @@ FILE_FILTER = (
 )
 
 
+def _fmt_duration(seconds: float) -> str:
+    seconds = int(max(0, seconds))
+    hours, rem = divmod(seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Velox")
-        self.resize(1040, 780)
+        self.setMinimumSize(720, 520)
+        self.resize(920, 640)
         self.config: VeloxConfig = load_user_config()
         self._worker: PipelineWorker | None = None
         self._files_total = 0
         self._files_done = 0
         self._current_file = ""
+        self._step_text = ""
+        self._pass_started_at: float | None = None
+        self._run_started_at: float | None = None
+
+        self._elapsed_timer = QTimer(self)
+        self._elapsed_timer.setInterval(1000)
+        self._elapsed_timer.timeout.connect(self._update_elapsed)
 
         self._build()
         self.settings.load_from_config(self.config)
@@ -69,6 +83,8 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_files_tab(), "Files")
@@ -84,20 +100,24 @@ class MainWindow(QMainWindow):
     def _build_files_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
         self.file_list = QListWidget()
         self.file_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.file_list.setAlternatingRowColors(True)
         layout.addWidget(self.file_list, 1)
 
         buttons = QHBoxLayout()
-        add_files = QPushButton("Add files…")
-        add_files.clicked.connect(self._add_files)
-        add_folder = QPushButton("Add folder…")
-        add_folder.clicked.connect(self._add_folder)
-        remove = QPushButton("Remove selected")
-        remove.clicked.connect(self._remove_selected)
-        clear = QPushButton("Clear")
-        clear.clicked.connect(lambda: self.file_list.clear())
-        for button in (add_files, add_folder, remove, clear):
+        buttons.setSpacing(6)
+        for label, slot in (
+            ("Add files…", self._add_files),
+            ("Add folder…", self._add_folder),
+            ("Remove", self._remove_selected),
+            ("Clear", lambda: self.file_list.clear()),
+        ):
+            button = QPushButton(label)
+            button.clicked.connect(slot)
             buttons.addWidget(button)
         buttons.addStretch(1)
         layout.addLayout(buttons)
@@ -106,35 +126,61 @@ class MainWindow(QMainWindow):
     def _build_progress(self) -> QWidget:
         box = QGroupBox("Progress")
         layout = QVBoxLayout(box)
+        layout.setContentsMargins(12, 6, 12, 8)
+        layout.setSpacing(6)
 
-        self.current_label = QLabel("Current file: —")
-        layout.addWidget(self.current_label)
+        header = QHBoxLayout()
+        self.current_label = QLabel("Idle")
+        self.current_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        font = self.current_label.font()
+        font.setBold(True)
+        self.current_label.setFont(font)
+        self.count_label = QLabel("")
+        self.count_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        header.addWidget(self.current_label, 1)
+        header.addWidget(self.count_label)
+        layout.addLayout(header)
 
-        file_row = QHBoxLayout()
-        file_row.addWidget(QLabel("File:"))
         self.file_bar = QProgressBar()
-        self.file_bar.setRange(0, 1000)
+        self.file_bar.setRange(0, 100)
         self.file_bar.setValue(0)
-        file_row.addWidget(self.file_bar, 1)
-        layout.addLayout(file_row)
+        self.file_bar.setTextVisible(True)
+        self.file_bar.setFormat("%p%")
+        layout.addWidget(self.file_bar)
 
-        overall_row = QHBoxLayout()
-        overall_row.addWidget(QLabel("Overall:"))
+        self.step_label = QLabel("Add files and press Start.")
+        self.step_label.setObjectName("stepLabel")
+        layout.addWidget(self.step_label)
+
+        overall = QHBoxLayout()
+        overall.addWidget(QLabel("Overall"))
         self.overall_bar = QProgressBar()
         self.overall_bar.setRange(0, 1)
         self.overall_bar.setValue(0)
-        overall_row.addWidget(self.overall_bar, 1)
-        layout.addLayout(overall_row)
+        self.overall_bar.setTextVisible(True)
+        self.overall_bar.setFormat("%v / %m files")
+        overall.addWidget(self.overall_bar, 1)
+        layout.addLayout(overall)
+
+        self.details_button = QToolButton()
+        self.details_button.setText("Details")
+        self.details_button.setCheckable(True)
+        self.details_button.setArrowType(Qt.ArrowType.RightArrow)
+        self.details_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.details_button.toggled.connect(self._toggle_details)
+        layout.addWidget(self.details_button)
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
-        self.log.setFixedHeight(150)
+        self.log.setFixedHeight(140)
+        self.log.setVisible(False)
         layout.addWidget(self.log)
         return box
 
     def _build_buttons(self) -> QHBoxLayout:
         row = QHBoxLayout()
+        row.setSpacing(6)
         load = QPushButton("Load settings")
         load.clicked.connect(self._load_settings)
         save = QPushButton("Save settings")
@@ -155,6 +201,12 @@ class MainWindow(QMainWindow):
         row.addWidget(self.start_button)
         row.addWidget(self.stop_button)
         return row
+
+    def _toggle_details(self, checked: bool) -> None:
+        self.log.setVisible(checked)
+        self.details_button.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )
 
     # ------------------------------------------------------------------ files
     def _add_paths(self, paths: list[str]) -> None:
@@ -223,9 +275,17 @@ class MainWindow(QMainWindow):
         self.log.clear()
         self._files_total = len(files)
         self._files_done = 0
+        self._step_text = "Preparing…"
+        self._pass_started_at = None
+        self._run_started_at = time.monotonic()
         self.overall_bar.setRange(0, self._files_total)
         self.overall_bar.setValue(0)
+        self.current_label.setText("Preparing…")
+        self.file_bar.setValue(0)
+        self.step_label.setText("Preparing…")
+        self.count_label.setText(f"0 of {self._files_total}")
         self._set_running(True)
+        self._elapsed_timer.start()
         self._log(("Dry run — " if dry_run else "") + f"Starting {len(files)} file(s)…")
 
         worker = PipelineWorker(self.config, [Path(f) for f in files], dry_run)
@@ -258,25 +318,53 @@ class MainWindow(QMainWindow):
         self.dry_button.setEnabled(not running)
         self.stop_button.setEnabled(running)
 
+    def _update_elapsed(self) -> None:
+        if self._run_started_at is None:
+            return
+        elapsed = _fmt_duration(time.monotonic() - self._run_started_at)
+        self.count_label.setText(
+            f"File {min(self._files_done + 1, self._files_total)} of "
+            f"{self._files_total}  ·  {elapsed}"
+        )
+
     # --------------------------------------------------------------- signals
     def _on_run_started(self, total: int) -> None:
         self.overall_bar.setRange(0, max(1, total))
         self.overall_bar.setValue(0)
+        self._update_elapsed()
 
     def _on_file_started(self, path: str, summary: str) -> None:
         self._current_file = Path(path).name
-        self.current_label.setText(f"Current file: {self._current_file}")
+        self.current_label.setText(self._current_file)
         self.file_bar.setValue(0)
+        self._step_text = "Analysing streams…"
+        self._pass_started_at = None
+        self.step_label.setText(self._step_text)
+        self._update_elapsed()
         self._log(f"— {self._current_file}: {summary}")
 
     def _on_step_started(self, name: str) -> None:
         self._log(f"[{name}]")
 
     def _on_pass_started(self, description: str) -> None:
+        self._step_text = description
+        self._pass_started_at = time.monotonic()
+        self.file_bar.setValue(0)
+        self.step_label.setText(description)
         self._log(f"▶ {description}")
 
     def _on_progress(self, fraction: float) -> None:
-        self.file_bar.setValue(int(max(0.0, min(1.0, fraction)) * 1000))
+        fraction = max(0.0, min(1.0, fraction))
+        self.file_bar.setValue(int(fraction * 100))
+        if self._pass_started_at is not None and fraction > 0.02:
+            elapsed = time.monotonic() - self._pass_started_at
+            remaining = elapsed * (1.0 - fraction) / fraction
+            self.step_label.setText(
+                f"{self._step_text}  ·  {int(fraction * 100)}%  ·  "
+                f"~{_fmt_duration(remaining)} left"
+            )
+        else:
+            self.step_label.setText(f"{self._step_text}  ·  {int(fraction * 100)}%")
 
     def _on_pass_finished(self, event: PassEvent) -> None:
         self.results.add_pass(self._current_file or "?", event)
@@ -286,6 +374,7 @@ class MainWindow(QMainWindow):
         self.results.add_report(report)
         self._files_done += 1
         self.overall_bar.setValue(self._files_done)
+        self._update_elapsed()
         if report.cancelled:
             self._log(f"■ {report.source.name}: stopped")
         elif report.error:
@@ -293,11 +382,10 @@ class MainWindow(QMainWindow):
         elif report.skipped:
             self._log(f"⏭ {report.source.name}: skipped ({report.reason})")
         elif report.modified:
-            saved = report.saved_bytes
-            pct = report.saved_percent
             self._log(
                 f"✓ {report.source.name}: {fmt_bytes(report.original_bytes)} → "
-                f"{fmt_bytes(report.final_bytes)} (saved {fmt_bytes(saved)}, {pct:.1f}%)"
+                f"{fmt_bytes(report.final_bytes)} (saved {fmt_bytes(report.saved_bytes)}, "
+                f"{report.saved_percent:.1f}%)"
             )
         else:
             self._log(f"= {report.source.name}: nothing to change")
@@ -307,10 +395,14 @@ class MainWindow(QMainWindow):
 
     def _on_run_finished(self, reports) -> None:
         self._set_running(False)
+        self._elapsed_timer.stop()
+        self._run_started_at = None
+        self.file_bar.setValue(100)
         failed = [r for r in reports if not r.ok and not r.cancelled]
+        self.step_label.setText("Finished." if not failed else f"Finished with {len(failed)} error(s).")
+        self.count_label.setText(f"{self._files_done} of {self._files_total}")
         self._log(f"Done. {len(reports)} file(s), {len(failed)} failed.")
         self.results._update_summary()
-        # release the worker once we are back in the event loop
         QTimer.singleShot(0, self._release_worker)
 
     # ------------------------------------------------------------- settings
@@ -348,7 +440,7 @@ class MainWindow(QMainWindow):
         self.config.general.ffprobe_path = tools.ffprobe_path
         self.settings.ffmpeg_path.setText(tools.ffmpeg_path)
         self.settings.ffprobe_path.setText(tools.ffprobe_path)
-        self.settings.ffmpeg_path.setText(tools.ffmpeg_path)
+        self.statusBar().showMessage(f"ffmpeg: {tools.ffmpeg_path}")
         self._log(f"ffmpeg: {tools.ffmpeg_path}")
 
     def _locate_ffmpeg(self) -> None:
