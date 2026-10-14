@@ -1,0 +1,150 @@
+# Velox configuration
+# Copy to config.toml and adjust.
+#
+# This file is the *recommended* configuration for "best quality at the
+# smallest size" on Apple Silicon (1080p movies landing in the 1-2 GB window).
+# Built-in defaults differ slightly (e.g. audio_bitrate_kbps = 0 and no
+# absolute size bounds) - see velox/config.py.
+#
+# Plugin order mirrors the original Tdarr stack. Reorder the list (or remove
+# entries) to change what runs and in which order.
+
+[general]
+ffmpeg_path = "ffmpeg"
+ffprobe_path = "ffprobe"
+# Keep a backup of the original when replacing it in place.
+keep_original = true
+# If set, results are written here and the original is never touched.
+output_dir = ""
+# Scratch directory for temporary files.
+#   "source" (default) -> hidden folder next to each file, i.e. on the same
+#                         volume (NAS). Keeps big temp files off the Mac SSD and
+#                         makes the final step a free rename instead of a copy.
+#   "/path/to/scratch" -> use this directory (supports {source_dir}).
+temp_dir = "source"
+# Also process files without a video stream.
+process_non_video = false
+
+[pipeline]
+order = [
+  "reorder_streams",
+  "clean_audio",
+  "clean_subs",
+  "standardise_audio",
+  "hevc_gpu",
+  "reorder_all_streams",
+  "file_size_check",
+]
+
+# Tdarr_Plugin_lmg1_Reorder_Streams
+[plugins.reorder_streams]
+enabled = true
+
+# Tdarr_Plugin_MC93_Migz3CleanAudio
+[plugins.clean_audio]
+enabled = true
+# ISO-639-2 3-letter codes, comma separated. Keep "und" for untagged tracks.
+language = "eng,und"
+commentary = false
+# Tag untagged/"und" audio with this language (empty = disabled).
+tag_language = ""
+# Tag untitled tracks with their channel layout (e.g. "5.1"). Do not use with mp4.
+tag_title = false
+
+# Tdarr_Plugin_MC93_Migz4CleanSubs
+[plugins.clean_subs]
+enabled = true
+language = "eng"
+commentary = false
+sdh = true
+tag_language = ""
+
+# Tdarr_Plugin_00td_action_standardise_audio_stream_codecs
+[plugins.standardise_audio]
+enabled = true
+audio_codec = "aac"
+# Cap audio bitrate (kbps) so audio cannot eat the video size budget.
+# 0 = keep the source bitrate. 256 is a good default for stereo/5.1 AAC.
+audio_bitrate_kbps = 256
+
+# Tdarr_Plugin_AC_HEVC_GPU
+[plugins.hevc_gpu]
+enabled = true
+target_codec = "hevc"
+# Video encoder. Use "auto" to probe GPU encoders in order, or pin one:
+#   hevc_videotoolbox  -> Apple Silicon / Intel Mac (default)
+#   h264_videotoolbox  -> Mac hardware H.264
+#   hevc_nvenc / hevc_qsv / hevc_amf / hevc_vaapi -> other GPUs
+encoder = "hevc_videotoolbox"
+
+# How the video bitrate is chosen.
+#   "tier"    -> resolution & framerate aware (bits_per_pixel * W * H * fps).
+#                One setting for everything: a 2h movie ~1.5 GB, a 45min
+#                episode ~0.6 GB, consistent quality. (default, recommended)
+#   "size"    -> fixed output size per file (target_size_mb), e.g. for movies.
+#   "quality" -> constant quality (Apple Silicon -q:v) with a size ceiling.
+bitrate_mode = "tier"
+
+# --- tier mode -------------------------------------------------------------
+# Bits per pixel per frame. 0.03 = small, 0.04-0.05 = more quality.
+bits_per_pixel = 0.033
+
+# --- size mode -------------------------------------------------------------
+# Desired output size in MiB (only used by "size" mode).
+target_size_mb = 1500.0
+# Reserve some space for container/muxing overhead (percent).
+size_overhead_percent = 2.0
+# Assumed bitrate for audio streams whose bitrate cannot be detected.
+fallback_audio_kbps = 256
+
+# --- quality mode ----------------------------------------------------------
+# VideoToolbox constant quality, 0-100 (higher = better/larger).
+quality = 55
+
+# Clamp the computed video bitrate (kbps). Upper clamp leaves room for 4K/8K.
+min_video_kbps = 300
+max_video_kbps = 40000
+
+# --- encoder behaviour -----------------------------------------------------
+try_use_gpu = true
+# Let VideoToolbox decode the source as well (Apple Silicon, faster).
+# ffmpeg falls back to software decode for codecs VideoToolbox cannot handle.
+hardware_decode = true
+# Use libx265/libx264 if no GPU encoder is available.
+allow_cpu_fallback = true
+cpu_preset = "medium"
+container = "mkv"
+# Skip files whose (target) bitrate is below this, in kbps. 0 = disabled.
+bitrate_cutoff = 0
+# Main10 output: better compression and less banding at low bitrates.
+# Disable if some of your players do not support HEVC 10-bit.
+enable_10bit = true
+# NVENC-only B-frames (ignored by other encoders).
+bframes_enabled = false
+bframes_value = 5
+# Spatial adaptive quantization (VideoToolbox/NVENC); ignored if unsupported.
+spatial_aq = true
+force_conform = false
+exclude_gpus = ""
+allowed_codecs = "vp9,av1"
+
+# Tdarr_Plugin_00td_action_re_order_all_streams_v2
+[plugins.reorder_all_streams]
+enabled = true
+process_order = "codecs,channels,languages,streamTypes"
+languages = ""
+channels = "7.1,5.1,2,1"
+codecs = ""
+stream_types = "video,audio,subtitle"
+
+# Tdarr_Plugin_a9he_New_file_size_check
+[plugins.file_size_check]
+enabled = true
+# Relative to the ORIGINAL file (percent). A guard against bloat; lower_bound = 0
+# disables the lower check (shrinking a large source is expected).
+upper_bound = 110
+lower_bound = 0
+# Absolute bounds in MiB (0 = disabled). Leave at 0 for mixed libraries; set
+# them if you want to guarantee a fixed size window (e.g. 1000 / 2000).
+min_size_mb = 0
+max_size_mb = 0
