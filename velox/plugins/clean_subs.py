@@ -49,8 +49,7 @@ class CleanSubsPlugin(Plugin):
             if "language" in tags and language not in languages:
                 drop.add(index)
                 result.note(
-                    f"☒ Subtitle stream {index} has unwanted language tag "
-                    f"{language}, removing."
+                    f"☒ Subtitle stream {index} has unwanted language tag {language}, removing."
                 )
                 continue
 
@@ -69,13 +68,11 @@ class CleanSubsPlugin(Plugin):
                     continue
 
             # Tag unknown language.
-            if tag_language:
-                if "language" not in tags or "und" in language:
-                    metadata.setdefault(index, []).append(("language", tag_language))
-                    result.note(
-                        f"☒ Subtitle stream {index} has no language, "
-                        f"tagging as {tag_language}."
-                    )
+            if tag_language and ("language" not in tags or "und" in language):
+                metadata.setdefault(index, []).append(("language", tag_language))
+                result.note(
+                    f"☒ Subtitle stream {index} has no language, tagging as {tag_language}."
+                )
 
         if drop or metadata:
             result.process_file = True
@@ -83,7 +80,6 @@ class CleanSubsPlugin(Plugin):
             result.requeue = True
         else:
             result.note(
-                "☑ File doesn't contain subtitle tracks which are unwanted or that "
-                "require tagging."
+                "☑ File doesn't contain subtitle tracks which are unwanted or that require tagging."
             )
         return result

@@ -62,7 +62,7 @@ class MediaInfo:
     size: int
 
     @classmethod
-    def from_probe(cls, path: str | Path, probe: dict[str, Any], size: int) -> "MediaInfo":
+    def from_probe(cls, path: str | Path, probe: dict[str, Any], size: int) -> MediaInfo:
         return cls(Path(path), probe, size)
 
     # ------------------------------------------------------------- basic info
@@ -125,7 +125,10 @@ class MediaInfo:
     @property
     def video_stream(self) -> dict[str, Any] | None:
         for s in self.streams:
-            if stream_type(s) == VIDEO and str(s.get("codec_name") or "").lower() not in IMAGE_CODECS:
+            if (
+                stream_type(s) == VIDEO
+                and str(s.get("codec_name") or "").lower() not in IMAGE_CODECS
+            ):
                 return s
         return None
 
@@ -145,9 +148,7 @@ class MediaInfo:
         for s in self.streams:
             counts[stream_type(s)] = counts.get(stream_type(s), 0) + 1
         if counts:
-            bits.append(
-                "streams=" + ",".join(f"{k}:{v}" for k, v in counts.items() if k)
-            )
+            bits.append("streams=" + ",".join(f"{k}:{v}" for k, v in counts.items() if k))
         return " ".join(bits)
 
     def stream_table(self) -> str:
@@ -158,8 +159,8 @@ class MediaInfo:
             lines.append(
                 f"{s.get('index', '?'):>4} "
                 f"{stream_type(s):<9} "
-                f"{str(s.get('codec_name') or ''):<12} "
-                f"{str(s.get('channels') or ''):>3} "
+                f"{s.get('codec_name') or ''!s:<12} "
+                f"{s.get('channels') or ''!s:>3} "
                 f"{stream_language(s) or '-':<5} "
                 f"{stream_title(s)}"
             )

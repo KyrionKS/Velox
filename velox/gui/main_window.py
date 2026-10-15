@@ -61,8 +61,20 @@ from .settings import SettingsPanel
 from .worker import PipelineWorker
 
 VIDEO_EXTENSIONS = {
-    ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".m2ts", ".mts",
-    ".webm", ".wmv", ".flv", ".mpg", ".mpeg", ".vob",
+    ".mkv",
+    ".mp4",
+    ".m4v",
+    ".avi",
+    ".mov",
+    ".ts",
+    ".m2ts",
+    ".mts",
+    ".webm",
+    ".wmv",
+    ".flv",
+    ".mpg",
+    ".mpeg",
+    ".vob",
 }
 FILE_FILTER = (
     "Video files (*.mkv *.mp4 *.m4v *.avi *.mov *.ts *.m2ts *.mts *.webm "
@@ -642,9 +654,7 @@ class MainWindow(QMainWindow):
         active = list(self._active)
         if len(active) == 1:
             path = active[0]
-            self.status_label.setText(
-                self._status_text.get(path) or Path(path).name
-            )
+            self.status_label.setText(self._status_text.get(path) or Path(path).name)
         elif len(active) > 1:
             self.status_label.setText(f"Processing {len(active)} files…")
 
@@ -771,14 +781,14 @@ class MainWindow(QMainWindow):
         if geometry is not None:
             self.restoreGeometry(geometry)
 
-    def changeEvent(self, event) -> None:  # noqa: N802
+    def changeEvent(self, event) -> None:
         super().changeEvent(event)
         # Redraw the toolbar icons when the system appearance (light/dark) changes.
         if event.type() == QEvent.Type.PaletteChange and hasattr(self, "act_start"):
             self.act_start.setIcon(self._toolbar_icon("play"))
             self.act_stop.setIcon(self._toolbar_icon("stop"))
 
-    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+    def closeEvent(self, event: QCloseEvent) -> None:
         self._qsettings.setValue("window/geometry", self.saveGeometry())
         worker = self._worker
         if worker is not None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..media import MediaInfo, VIDEO, stream_type
+from ..media import VIDEO, MediaInfo, stream_type
 from .base import PipelineContext, Plugin, PluginResult, RemuxPlan
 
 # Type order used by the original ``-map 0:v? -map 0:a? ...`` preset.
@@ -26,8 +26,7 @@ class ReorderStreamsPlugin(Plugin):
     key = "reorder_streams"
     name = "Move Video First"
     description = (
-        "Moves the video stream to the front so downstream tools recognise the "
-        "codec correctly."
+        "Moves the video stream to the front so downstream tools recognise the codec correctly."
     )
 
     def run(self, media: MediaInfo, ctx: PipelineContext) -> PluginResult:
@@ -38,7 +37,6 @@ class ReorderStreamsPlugin(Plugin):
             return result
 
         order = type_order(media)
-        current = [int(s["index"]) for s in media.streams]
 
         # Only act when the video stream is not first (matches the original).
         if media.first_stream_type != VIDEO:

@@ -76,7 +76,7 @@ class FakeFFmpeg:
     def __init__(self, available: set[str] | None = None) -> None:
         self.available = available or set()
 
-    def has_encoder(self, encoder, input_args=None, video_filter=None) -> bool:  # noqa: ARG002
+    def has_encoder(self, encoder, input_args=None, video_filter=None) -> bool:
         return encoder in self.available
 
 
@@ -195,7 +195,6 @@ def test_clean_audio_default_und_matches_untagged():
     assert result.remux.dispositions == {2: "default", 1: "0"}
 
 
-
 # ----------------------------------------------------------------- clean_subs
 def test_clean_subs_removes_unwanted_language():
     media = make_media([vstream(0), sstream(1, lang="eng"), sstream(2, lang="deu")])
@@ -311,9 +310,7 @@ def test_hevc_gpu_bitrate_cutoff_skips():
     config = VeloxConfig().hevc_gpu
     config.bitrate_cutoff = 5000
     media = make_media([vstream(0, codec="h264", bit_rate="4000000"), astream(1)])
-    result = HevcGpuPlugin(config).run(
-        media, make_ctx(media, available={"hevc_videotoolbox"})
-    )
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"hevc_videotoolbox"}))
     assert not result.process_file
 
 
@@ -344,9 +341,7 @@ def test_hevc_gpu_auto_selection():
     media = make_media([vstream(0, codec="h264", bit_rate="5000000"), astream(1)])
     config = VeloxConfig().hevc_gpu
     config.encoder = "auto"
-    result = HevcGpuPlugin(config).run(
-        media, make_ctx(media, available={"hevc_videotoolbox"})
-    )
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"hevc_videotoolbox"}))
     assert result.process_file
     assert "hevc_videotoolbox" in result.output_args
 
@@ -393,17 +388,32 @@ def test_hevc_gpu_tier_is_independent_of_duration():
     config = VeloxConfig().hevc_gpu
     config.bitrate_mode = "tier"
     plugin = HevcGpuPlugin(config)
-    short = make_media([vstream(0, codec="h264", bit_rate="9000000", width=1920, height=1080), astream(1, bitrate=256_000)], duration=1500.0)
-    long = make_media([vstream(0, codec="h264", bit_rate="9000000", width=1920, height=1080), astream(1, bitrate=256_000)], duration=7200.0)
-    assert _bitrate_of(plugin.run(short, make_ctx(short, available={"hevc_videotoolbox"}))) == \
-           _bitrate_of(plugin.run(long, make_ctx(long, available={"hevc_videotoolbox"})))
+    short = make_media(
+        [
+            vstream(0, codec="h264", bit_rate="9000000", width=1920, height=1080),
+            astream(1, bitrate=256_000),
+        ],
+        duration=1500.0,
+    )
+    long = make_media(
+        [
+            vstream(0, codec="h264", bit_rate="9000000", width=1920, height=1080),
+            astream(1, bitrate=256_000),
+        ],
+        duration=7200.0,
+    )
+    assert _bitrate_of(
+        plugin.run(short, make_ctx(short, available={"hevc_videotoolbox"}))
+    ) == _bitrate_of(plugin.run(long, make_ctx(long, available={"hevc_videotoolbox"})))
 
 
 def test_hevc_gpu_size_mode_bitrate_math():
     # 1500 MiB over 2h, minus ~256k audio, minus 2% overhead -> ~1457 kbps.
     config = VeloxConfig().hevc_gpu
     config.bitrate_mode = "size"
-    result = HevcGpuPlugin(config).run(_movie(), make_ctx(_movie(), available={"hevc_videotoolbox"}))
+    result = HevcGpuPlugin(config).run(
+        _movie(), make_ctx(_movie(), available={"hevc_videotoolbox"})
+    )
     assert result.process_file
     kbps = int(_bitrate_of(result).rstrip("k"))
     assert 1400 <= kbps <= 1500
@@ -432,9 +442,7 @@ def test_hevc_gpu_tier_scales_to_4k():
     config = VeloxConfig().hevc_gpu
     config.bitrate_mode = "tier"
     media = _movie(width=3840, height=2160)
-    result = HevcGpuPlugin(config).run(
-        media, make_ctx(media, available={"hevc_videotoolbox"})
-    )
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"hevc_videotoolbox"}))
     kbps = int(_bitrate_of(result).rstrip("k"))
     assert 6500 <= kbps <= 6650
 
@@ -449,15 +457,12 @@ def test_hevc_gpu_default_is_constant_quality(monkeypatch):
     assert config.quality == 50
 
     media = _movie()
-    result = HevcGpuPlugin(config).run(
-        media, make_ctx(media, available={"hevc_videotoolbox"})
-    )
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"hevc_videotoolbox"}))
     assert result.process_file
     assert result.output_args[result.output_args.index("-q:v") + 1] == "50"
     assert "-b:v" not in result.output_args
     assert "-bufsize" not in result.output_args  # VideoToolbox ignores it
     assert "-spatial_aq" in result.output_args
-
 
 
 def test_hevc_gpu_quality_mode_uses_qv(monkeypatch):
@@ -469,9 +474,7 @@ def test_hevc_gpu_quality_mode_uses_qv(monkeypatch):
     config.bitrate_mode = "quality"
     config.quality = 60
     media = _movie()
-    result = HevcGpuPlugin(config).run(
-        media, make_ctx(media, available={"hevc_videotoolbox"})
-    )
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"hevc_videotoolbox"}))
     assert result.process_file
     assert "-q:v" in result.output_args
     assert result.output_args[result.output_args.index("-q:v") + 1] == "60"
@@ -488,9 +491,7 @@ def test_hevc_gpu_quality_falls_back_on_non_apple_silicon(monkeypatch):
     config = VeloxConfig().hevc_gpu
     config.bitrate_mode = "quality"
     media = _movie()
-    result = HevcGpuPlugin(config).run(
-        media, make_ctx(media, available={"hevc_videotoolbox"})
-    )
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"hevc_videotoolbox"}))
     assert result.process_file
     assert "-q:v" not in result.output_args
     assert "-b:v" in result.output_args
@@ -525,14 +526,10 @@ def test_hevc_gpu_videotoolbox_spatial_aq():
     assert "-spatial_aq:v" not in result.output_args
 
 
-
-
 # ------------------------------------------------------- reorder_all_streams
 def test_reorder_all_streams_sorts_video_first():
     media = make_media([astream(0, lang="eng"), vstream(1), sstream(2, lang="eng")])
-    result = ReorderAllStreamsPlugin(VeloxConfig().reorder_all_streams).run(
-        media, make_ctx(media)
-    )
+    result = ReorderAllStreamsPlugin(VeloxConfig().reorder_all_streams).run(media, make_ctx(media))
     assert result.process_file
     assert result.remux is not None
     # video (originally index 1) should come first
@@ -540,10 +537,10 @@ def test_reorder_all_streams_sorts_video_first():
 
 
 def test_reorder_all_streams_noop_when_ordered():
-    media = make_media([vstream(0), astream(1, lang="eng", channels=6), astream(2, lang="eng", channels=2)])
-    result = ReorderAllStreamsPlugin(VeloxConfig().reorder_all_streams).run(
-        media, make_ctx(media)
+    media = make_media(
+        [vstream(0), astream(1, lang="eng", channels=6), astream(2, lang="eng", channels=2)]
     )
+    result = ReorderAllStreamsPlugin(VeloxConfig().reorder_all_streams).run(media, make_ctx(media))
     assert not result.process_file
 
 

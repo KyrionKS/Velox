@@ -21,9 +21,9 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from .config import DEFAULT_ORDER, VeloxConfig
 from .errors import CancelledError, PluginError, VeloxError
@@ -88,9 +88,7 @@ class Pipeline:
     def __init__(self, config: VeloxConfig, logger: logging.Logger | None = None) -> None:
         self.config = config
         self.log = logger or get_logger()
-        self.ffmpeg = FFmpegTools(
-            config.general.ffmpeg_path, config.general.ffprobe_path, self.log
-        )
+        self.ffmpeg = FFmpegTools(config.general.ffmpeg_path, config.general.ffprobe_path, self.log)
         self.ffmpeg.resolve()
         self.plugins = self._build_plugins()
 
@@ -197,11 +195,19 @@ class Pipeline:
                 output_path = (
                     Path("<output>")
                     if dry_run
-                    else (tmpdir or source.parent) / f"{pass_index:02d}_{source.stem}.{base.container}"
+                    else (tmpdir or source.parent)
+                    / f"{pass_index:02d}_{source.stem}.{base.container}"
                 )
                 command = [
-                    self.ffmpeg.ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
-                    "-i", str(current), *args, str(output_path),
+                    self.ffmpeg.ffmpeg_path,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(current),
+                    *args,
+                    str(output_path),
                 ]
                 steps = [outcome.plugin.name for outcome in outcomes]
                 observer.on_pass_started(" + ".join(steps))
@@ -289,7 +295,8 @@ class Pipeline:
                 output_path = (
                     Path("<output>")
                     if dry_run
-                    else (tmpdir or source.parent) / f"{pass_index:02d}_{source.stem}.{out_container}"
+                    else (tmpdir or source.parent)
+                    / f"{pass_index:02d}_{source.stem}.{out_container}"
                 )
                 command = self._build_command(result, current, output_path)
                 outcome.command = command
@@ -335,9 +342,7 @@ class Pipeline:
                         current, original, self._expected_video_codec(report), observer
                     )
                     if problem:
-                        raise PluginError(
-                            f"Output verification failed: {problem}", "verify"
-                        )
+                        raise PluginError(f"Output verification failed: {problem}", "verify")
                 report.final_path = self._commit(current, source)
                 if not self.config.general.keep_original:
                     self._remove_backup(source)
@@ -519,8 +524,15 @@ class Pipeline:
 
     def _decode_check(self, path: Path) -> str | None:
         command = [
-            self.ffmpeg.ffmpeg_path, "-v", "error", "-xerror",
-            "-i", str(path), "-f", "null", "-",
+            self.ffmpeg.ffmpeg_path,
+            "-v",
+            "error",
+            "-xerror",
+            "-i",
+            str(path),
+            "-f",
+            "null",
+            "-",
         ]
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         if result.returncode != 0 or result.stderr.strip():
@@ -548,9 +560,7 @@ class Pipeline:
             parent = source.parent
         else:
             parent = Path(
-                configured.format(
-                    source_dir=str(source.parent), source_name=source.name
-                )
+                configured.format(source_dir=str(source.parent), source_name=source.name)
             ).expanduser()
         parent.mkdir(parents=True, exist_ok=True)
         return Path(tempfile.mkdtemp(prefix=".velox-", dir=str(parent)))

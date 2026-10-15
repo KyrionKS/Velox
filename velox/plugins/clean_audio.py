@@ -28,8 +28,10 @@ class CleanAudioPlugin(Plugin):
 
         language_input = str(getattr(self.config, "language", "") or "")
         if language_input == "":
-            result.note("☒ Language/s options not set, please configure required options. "
-                        "Skipping this plugin.")
+            result.note(
+                "☒ Language/s options not set, please configure required options. "
+                "Skipping this plugin."
+            )
             return result
 
         languages = [item.strip() for item in language_input.split(",")]
@@ -65,9 +67,7 @@ class CleanAudioPlugin(Plugin):
                 title = stream_title(stream).lower()
                 if any(word in title for word in ("commentary", "description", "sdh")):
                     remove = True
-                    result.note(
-                        f"☒ Audio stream {index} detected as being descriptive, removing."
-                    )
+                    result.note(f"☒ Audio stream {index} detected as being descriptive, removing.")
 
             if remove:
                 drop.add(index)
@@ -76,13 +76,12 @@ class CleanAudioPlugin(Plugin):
             kept_audio.append(stream)
 
             # Tag unknown language.
-            if tag_language:
-                if "language" not in tags or "und" in language:
-                    metadata.setdefault(index, []).append(("language", tag_language))
-                    result.note(
-                        f"☒ Audio stream {index} detected as having no language, "
-                        f"tagging as {tag_language}."
-                    )
+            if tag_language and ("language" not in tags or "und" in language):
+                metadata.setdefault(index, []).append(("language", tag_language))
+                result.note(
+                    f"☒ Audio stream {index} detected as having no language, "
+                    f"tagging as {tag_language}."
+                )
 
             # Tag missing title with the channel layout.
             if tag_title and "title" not in tags:
@@ -109,12 +108,11 @@ class CleanAudioPlugin(Plugin):
                 for stream in kept_audio:
                     index = int(stream["index"])
                     dispositions[index] = "default" if index == chosen else "0"
-                label = stream_language(
-                    next(s for s in kept_audio if int(s["index"]) == chosen)
-                ) or "und"
-                result.note(
-                    f"☒ Marking audio stream {chosen} ({label}) as the default track."
+                label = (
+                    stream_language(next(s for s in kept_audio if int(s["index"]) == chosen))
+                    or "und"
                 )
+                result.note(f"☒ Marking audio stream {chosen} ({label}) as the default track.")
 
         if drop or metadata or dispositions:
             result.process_file = True

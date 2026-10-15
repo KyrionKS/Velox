@@ -44,13 +44,9 @@ class FileSizeCheckPlugin(Plugin):
         )
 
         if upper > 0 and old_size and new_size > (upper / 100) * old_size:
-            result.error = (
-                f"New file size not within limits. {size_text}. upperBound is {upper:g}%"
-            )
+            result.error = f"New file size not within limits. {size_text}. upperBound is {upper:g}%"
         elif lower > 0 and old_size and new_size < (lower / 100) * old_size:
-            result.error = (
-                f"New file size not within limits. {size_text}. lowerBound is {lower:g}%"
-            )
+            result.error = f"New file size not within limits. {size_text}. lowerBound is {lower:g}%"
         elif max_mb > 0 and new_mb > max_mb:
             result.error = (
                 f"New file size not within limits. {size_text}. max_size_mb is {max_mb:g} MiB"

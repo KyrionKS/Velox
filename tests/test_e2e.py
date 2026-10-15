@@ -27,9 +27,7 @@ def _find_tool(name: str) -> str | None:
 FFMPEG = _find_tool("ffmpeg")
 FFPROBE = _find_tool("ffprobe")
 
-pytestmark = pytest.mark.skipif(
-    not FFMPEG or not FFPROBE, reason="ffmpeg/ffprobe not available"
-)
+pytestmark = pytest.mark.skipif(not FFMPEG or not FFPROBE, reason="ffmpeg/ffprobe not available")
 
 
 def _make_messy_sample(path: Path) -> None:
@@ -37,18 +35,50 @@ def _make_messy_sample(path: Path) -> None:
     subtitle = path.with_suffix(".srt")
     subtitle.write_text("1\n00:00:00,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
     command = [
-        FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "testsrc=size=320x240:rate=15:duration=2",
-        "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
-        "-f", "lavfi", "-i", "sine=frequency=660:duration=2",
-        "-i", str(subtitle),
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=size=320x240:rate=15:duration=2",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=2",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=660:duration=2",
+        "-i",
+        str(subtitle),
         # audio first, then video, then the second audio, then subs
-        "-map", "1:a", "-map", "0:v", "-map", "2:a", "-map", "3:s",
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-c:s", "srt",
-        "-metadata:s:a:0", "language=eng",
-        "-metadata:s:a:1", "language=jpn",
-        "-metadata:s:s:0", "language=eng",
+        "-map",
+        "1:a",
+        "-map",
+        "0:v",
+        "-map",
+        "2:a",
+        "-map",
+        "3:s",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-c:s",
+        "srt",
+        "-metadata:s:a:0",
+        "language=eng",
+        "-metadata:s:a:1",
+        "language=jpn",
+        "-metadata:s:s:0",
+        "language=eng",
         str(path),
     ]
     subprocess.run(command, check=True, capture_output=True)
@@ -64,17 +94,49 @@ def _make_sample(path: Path) -> None:
     subtitle = path.with_suffix(".srt")
     subtitle.write_text("1\n00:00:00,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
     command = [
-        FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "testsrc=size=320x240:rate=15:duration=2",
-        "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
-        "-f", "lavfi", "-i", "sine=frequency=660:duration=2",
-        "-i", str(subtitle),
-        "-map", "0:v", "-map", "1:a", "-map", "2:a", "-map", "3:s",
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-c:s", "srt",
-        "-metadata:s:a:0", "language=eng",
-        "-metadata:s:a:1", "language=jpn",
-        "-metadata:s:s:0", "language=eng",
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=size=320x240:rate=15:duration=2",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=2",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=660:duration=2",
+        "-i",
+        str(subtitle),
+        "-map",
+        "0:v",
+        "-map",
+        "1:a",
+        "-map",
+        "2:a",
+        "-map",
+        "3:s",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-c:s",
+        "srt",
+        "-metadata:s:a:0",
+        "language=eng",
+        "-metadata:s:a:1",
+        "language=jpn",
+        "-metadata:s:s:0",
+        "language=eng",
         str(path),
     ]
     subprocess.run(command, check=True, capture_output=True)
@@ -297,14 +359,41 @@ def test_container_change_removes_original(tmp_path: Path):
 def _make_two_audio_sample(path: Path) -> None:
     subprocess.run(
         [
-            FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=1",
-            "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
-            "-f", "lavfi", "-i", "sine=frequency=660:duration=1",
-            "-map", "0:v", "-map", "1:a", "-map", "2:a",
-            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac",
-            "-metadata:s:a:0", "language=eng",
-            "-metadata:s:a:1", "language=und",
+            FFMPEG,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=160x120:rate=10:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=660:duration=1",
+            "-map",
+            "0:v",
+            "-map",
+            "1:a",
+            "-map",
+            "2:a",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-metadata:s:a:0",
+            "language=eng",
+            "-metadata:s:a:1",
+            "language=und",
             str(path),
         ],
         check=True,
@@ -330,9 +419,18 @@ def test_default_audio_track_is_marked(tmp_path: Path):
 
     info = json.loads(
         subprocess.run(
-            [FFPROBE, "-v", "error", "-print_format", "json", "-show_streams",
-             str(report.final_path)],
-            capture_output=True, text=True, check=True,
+            [
+                FFPROBE,
+                "-v",
+                "error",
+                "-print_format",
+                "json",
+                "-show_streams",
+                str(report.final_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout
     )
     audio = [s for s in info["streams"] if s.get("codec_type") == "audio"]
@@ -342,7 +440,6 @@ def test_default_audio_track_is_marked(tmp_path: Path):
     assert audio[1]["disposition"]["default"] == 0
 
 
-
 def test_remux_plugins_merge_into_a_single_pass(tmp_path: Path):
     # audio-first file with an unwanted audio track: reorder + clean_audio (+
     # reorder_all_streams) must all fold into ONE ffmpeg pass.
@@ -350,7 +447,7 @@ def test_remux_plugins_merge_into_a_single_pass(tmp_path: Path):
     _make_messy_sample(source)
 
     config = VeloxConfig()
-    config.hevc_gpu.enabled = False      # transcode would force its own pass
+    config.hevc_gpu.enabled = False  # transcode would force its own pass
     config.standardise_audio.enabled = False
     pipeline = _make_pipeline(config)
 
@@ -515,8 +612,17 @@ def test_cli_jobs_parallel(tmp_path: Path):
         files.append(path)
 
     code = cli.main(
-        ["--ffmpeg", FFMPEG, "--ffprobe", FFPROBE, "--jobs", "2",
-         "--only", "clean_audio", *[str(f) for f in files]]
+        [
+            "--ffmpeg",
+            FFMPEG,
+            "--ffprobe",
+            FFPROBE,
+            "--jobs",
+            "2",
+            "--only",
+            "clean_audio",
+            *[str(f) for f in files],
+        ]
     )
     assert code == 0
     assert not list(tmp_path.glob(".velox-*"))
@@ -575,9 +681,3 @@ def test_read_only_directory_is_handled(tmp_path: Path):
     assert not report.ok  # permission error is reported, not raised
     assert report.error
     assert source.exists()
-
-
-
-
-
-

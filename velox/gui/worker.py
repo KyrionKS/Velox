@@ -13,7 +13,6 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
@@ -26,7 +25,7 @@ from ..pipeline import Pipeline, RunReport
 class _FileObserver(ProgressObserver):
     """Pipeline callbacks for one file, forwarded as Qt signals with its path."""
 
-    def __init__(self, worker: "PipelineWorker", source: Path) -> None:
+    def __init__(self, worker: PipelineWorker, source: Path) -> None:
         self.worker = worker
         self.source = str(source)
 
@@ -125,7 +124,7 @@ class PipelineWorker(QObject):
             workers = min(self.concurrency, max(1, len(self.files)))
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="velox") as pool:
                 reports = list(pool.map(task, self.files))
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # noqa: BLE001
             self.failed.emit(f"{type(exc).__name__}: {exc}")
         finally:
             self.run_finished.emit(reports)

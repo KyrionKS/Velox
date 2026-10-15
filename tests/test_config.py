@@ -59,7 +59,7 @@ def test_save_and_load_roundtrip(tmp_path: Path):
 def test_partial_config_only_overrides_given_values(tmp_path: Path):
     path = tmp_path / "config.toml"
     path.write_text(
-        "[plugins.clean_audio]\nlanguage = \"deu\"\n",
+        '[plugins.clean_audio]\nlanguage = "deu"\n',
         encoding="utf-8",
     )
     loaded = load_config(path)
@@ -72,10 +72,7 @@ def test_partial_config_only_overrides_given_values(tmp_path: Path):
 def test_type_coercion(tmp_path: Path):
     path = tmp_path / "config.toml"
     path.write_text(
-        "[plugins.hevc_gpu]\n"
-        "bits_per_pixel = 0.045\n"
-        "enable_10bit = true\n"
-        "bframes_value = 7\n",
+        "[plugins.hevc_gpu]\nbits_per_pixel = 0.045\nenable_10bit = true\nbframes_value = 7\n",
         encoding="utf-8",
     )
     loaded = load_config(path)

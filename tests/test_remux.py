@@ -24,15 +24,28 @@ def a(i: int, lang: str = "eng", codec: str = "aac") -> dict[str, Any]:
 
 
 def s(i: int, lang: str = "eng") -> dict[str, Any]:
-    return {"index": i, "codec_type": "subtitle", "codec_name": "subrip", "tags": {"language": lang}}
+    return {
+        "index": i,
+        "codec_type": "subtitle",
+        "codec_name": "subrip",
+        "tags": {"language": lang},
+    }
 
 
 def test_drop_only_builds_negative_free_args():
     m = media([v(0), a(1, "eng"), a(2, "jpn"), s(3, "eng")])
     args = Pipeline._build_remux_args(RemuxPlan(drop={2}), m)
     assert args == [
-        "-map", "0:0", "-map", "0:1", "-map", "0:3",
-        "-c", "copy", "-max_muxing_queue_size", "9999",
+        "-map",
+        "0:0",
+        "-map",
+        "0:1",
+        "-map",
+        "0:3",
+        "-c",
+        "copy",
+        "-max_muxing_queue_size",
+        "9999",
     ]
 
 
@@ -43,11 +56,20 @@ def test_output_indices_are_remapped_after_drops():
     args = Pipeline._build_remux_args(plan, m)
     # remaining audio are 0:2 and 0:3 -> output audio indices a:0 and a:1
     assert args == [
-        "-map", "0:0", "-map", "0:2", "-map", "0:3",
-        "-c", "copy",
-        "-c:a:1", "aac",
-        "-b:a:1", "192k",
-        "-max_muxing_queue_size", "9999",
+        "-map",
+        "0:0",
+        "-map",
+        "0:2",
+        "-map",
+        "0:3",
+        "-c",
+        "copy",
+        "-c:a:1",
+        "aac",
+        "-b:a:1",
+        "192k",
+        "-max_muxing_queue_size",
+        "9999",
     ]
 
 
@@ -56,11 +78,18 @@ def test_metadata_uses_output_specifier():
     plan = RemuxPlan(drop={2}, metadata={1: [("language", "eng"), ("title", "2.0")]})
     args = Pipeline._build_remux_args(plan, m)
     assert args == [
-        "-map", "0:0", "-map", "0:1",
-        "-c", "copy",
-        "-metadata:s:a:0", "language=eng",
-        "-metadata:s:a:0", "title=2.0",
-        "-max_muxing_queue_size", "9999",
+        "-map",
+        "0:0",
+        "-map",
+        "0:1",
+        "-c",
+        "copy",
+        "-metadata:s:a:0",
+        "language=eng",
+        "-metadata:s:a:0",
+        "title=2.0",
+        "-max_muxing_queue_size",
+        "9999",
     ]
 
 
@@ -69,11 +98,20 @@ def test_dispositions_use_output_specifier():
     plan = RemuxPlan(dispositions={1: "default", 2: "0"})
     args = Pipeline._build_remux_args(plan, m)
     assert args == [
-        "-map", "0:0", "-map", "0:1", "-map", "0:2",
-        "-c", "copy",
-        "-disposition:a:0", "default",
-        "-disposition:a:1", "0",
-        "-max_muxing_queue_size", "9999",
+        "-map",
+        "0:0",
+        "-map",
+        "0:1",
+        "-map",
+        "0:2",
+        "-c",
+        "copy",
+        "-disposition:a:0",
+        "default",
+        "-disposition:a:1",
+        "0",
+        "-max_muxing_queue_size",
+        "9999",
     ]
 
 
@@ -81,8 +119,16 @@ def test_order_is_applied():
     m = media([v(0), a(1), s(2)])
     args = Pipeline._build_remux_args(RemuxPlan(order=[1, 0, 2]), m)
     assert args == [
-        "-map", "0:1", "-map", "0:0", "-map", "0:2",
-        "-c", "copy", "-max_muxing_queue_size", "9999",
+        "-map",
+        "0:1",
+        "-map",
+        "0:0",
+        "-map",
+        "0:2",
+        "-c",
+        "copy",
+        "-max_muxing_queue_size",
+        "9999",
     ]
 
 

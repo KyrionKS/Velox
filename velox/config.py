@@ -215,9 +215,7 @@ class VeloxConfig:
     clean_subs: CleanSubsConfig = field(default_factory=CleanSubsConfig)
     standardise_audio: StandardiseAudioConfig = field(default_factory=StandardiseAudioConfig)
     hevc_gpu: HevcGpuConfig = field(default_factory=HevcGpuConfig)
-    reorder_all_streams: ReorderAllStreamsConfig = field(
-        default_factory=ReorderAllStreamsConfig
-    )
+    reorder_all_streams: ReorderAllStreamsConfig = field(default_factory=ReorderAllStreamsConfig)
     file_size_check: FileSizeCheckConfig = field(default_factory=FileSizeCheckConfig)
 
     # ---------------------------------------------------------------- helpers
@@ -229,7 +227,7 @@ class VeloxConfig:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-    def copy(self) -> "VeloxConfig":
+    def copy(self) -> VeloxConfig:
         return copy.deepcopy(self)
 
 
@@ -361,13 +359,13 @@ def save_config(config: VeloxConfig, path: str | Path) -> None:
 
 
 __all__ = [
-    "VeloxConfig",
+    "DEFAULT_ORDER",
     "GeneralConfig",
     "PluginConfigBase",
-    "DEFAULT_ORDER",
+    "VeloxConfig",
+    "is_dataclass",
     "load_config",
+    "load_user_config",
     "save_config",
     "user_config_path",
-    "load_user_config",
-    "is_dataclass",
 ]

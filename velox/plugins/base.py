@@ -45,7 +45,7 @@ class RemuxPlan:
     # per-stream disposition, e.g. {3: "default"} or {4: "0"} to clear
     dispositions: dict[int, str] = field(default_factory=dict)
 
-    def merge(self, other: "RemuxPlan") -> None:
+    def merge(self, other: RemuxPlan) -> None:
         self.drop |= set(other.drop)
         if other.order is not None:
             self.order = list(other.order)
@@ -95,8 +95,8 @@ class PluginResult:
 class PipelineContext:
     """Shared state handed to every plugin."""
 
-    ffmpeg: "FFmpegTools"
-    original_media: "MediaInfo"
+    ffmpeg: FFmpegTools
+    original_media: MediaInfo
     dry_run: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -121,5 +121,5 @@ class Plugin:
     def enabled(self) -> bool:
         return bool(getattr(self.config, "enabled", True))
 
-    def run(self, media: "MediaInfo", ctx: PipelineContext) -> PluginResult:  # noqa: ARG002
+    def run(self, media: MediaInfo, ctx: PipelineContext) -> PluginResult:
         raise NotImplementedError

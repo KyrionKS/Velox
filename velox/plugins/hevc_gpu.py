@@ -47,9 +47,12 @@ GPU_ENCODERS: list[dict[str, Any]] = [
     {
         "encoder": "hevc_vaapi",
         "input_args": [
-            "-hwaccel", "vaapi",
-            "-hwaccel_device", "/dev/dri/renderD128",
-            "-hwaccel_output_format", "vaapi",
+            "-hwaccel",
+            "vaapi",
+            "-hwaccel_device",
+            "/dev/dri/renderD128",
+            "-hwaccel_output_format",
+            "vaapi",
         ],
         "video_filter": "format=nv12,hwupload",
     },
@@ -196,7 +199,10 @@ class HevcGpuPlugin(Plugin):
             )
             result.note(f"10-bit encode enabled (Main10, {reason}).")
 
-        if bool(getattr(self.config, "bframes_enabled", False)) and encoder["encoder"] in NVENC_ENCODERS:
+        if (
+            bool(getattr(self.config, "bframes_enabled", False))
+            and encoder["encoder"] in NVENC_ENCODERS
+        ):
             extra += ["-bf", str(int(getattr(self.config, "bframes_value", 5)))]
 
         # ------------------------------------------------------ stream handling
@@ -258,9 +264,8 @@ class HevcGpuPlugin(Plugin):
         result.note(f"☒ File is not in {target_codec}. Transcoding with {encoder['encoder']}.")
 
         input_args: list[str] = list(encoder.get("input_args", []))
-        if (
-            encoder["encoder"] in VIDEOTOOLBOX_ENCODERS
-            and bool(getattr(self.config, "hardware_decode", True))
+        if encoder["encoder"] in VIDEOTOOLBOX_ENCODERS and bool(
+            getattr(self.config, "hardware_decode", True)
         ):
             # Let the media engine decode the source as well (Apple Silicon).
             # ffmpeg falls back to software decode automatically for codecs
@@ -317,9 +322,7 @@ class HevcGpuPlugin(Plugin):
         )
         return clamped
 
-    def _size_target_bitrate(
-        self, media: MediaInfo, duration: float, result: PluginResult
-    ) -> int:
+    def _size_target_bitrate(self, media: MediaInfo, duration: float, result: PluginResult) -> int:
         target_mb = float(getattr(self.config, "target_size_mb", 1500.0))
         overhead = float(getattr(self.config, "size_overhead_percent", 2.0))
         total_kbps = (target_mb * 1024 * 1024 * 8) / duration / 1000
@@ -547,26 +550,39 @@ class HevcGpuPlugin(Plugin):
             return ["-b:v", f"{target}k", "-maxrate", f"{maximum}k", "-bufsize", f"{target * 2}k"]
         if "amf" in encoder:
             return [
-                "-b:v", f"{target}k",
-                "-minrate", f"{minimum}k",
-                "-maxrate", f"{maximum}k",
-                "-bufsize", f"{target * 2}k",
+                "-b:v",
+                f"{target}k",
+                "-minrate",
+                f"{minimum}k",
+                "-maxrate",
+                f"{maximum}k",
+                "-bufsize",
+                f"{target * 2}k",
             ]
         if "nvenc" in encoder:
             return [
-                "-cq:v", "19",
-                "-b:v", f"{target}k",
-                "-minrate", f"{minimum}k",
-                "-maxrate", f"{maximum}k",
-                "-bufsize", f"{target * 2}k",
+                "-cq:v",
+                "19",
+                "-b:v",
+                f"{target}k",
+                "-minrate",
+                f"{minimum}k",
+                "-maxrate",
+                f"{maximum}k",
+                "-bufsize",
+                f"{target * 2}k",
             ]
         # CPU fallback (libx264/libx265): ABR.
         preset = str(getattr(self.config, "cpu_preset", "medium") or "medium")
         return [
-            "-preset", preset,
-            "-b:v", f"{target}k",
-            "-maxrate", f"{maximum}k",
-            "-bufsize", f"{target * 2}k",
+            "-preset",
+            preset,
+            "-b:v",
+            f"{target}k",
+            "-maxrate",
+            f"{maximum}k",
+            "-bufsize",
+            f"{target * 2}k",
         ]
 
     def _quality_mode_args(self, encoder: str, ceiling: int = 0) -> list[str]:

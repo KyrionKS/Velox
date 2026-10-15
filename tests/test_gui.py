@@ -14,12 +14,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "minimal")
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402  (ensures the platform plugin loads)
 
-from velox.config import VeloxConfig  # noqa: E402
-from velox.events import PassEvent  # noqa: E402
-from velox.gui.results import ResultsPanel  # noqa: E402
-from velox.gui.settings import SettingsPanel  # noqa: E402
+from velox.config import VeloxConfig
+from velox.events import PassEvent
+from velox.gui.results import ResultsPanel
+from velox.gui.settings import SettingsPanel
 
 FFMPEG = os.environ.get("VELOX_TEST_FFMPEG") or shutil.which("ffmpeg")
 FFPROBE = os.environ.get("VELOX_TEST_FFPROBE") or shutil.which("ffprobe")
@@ -60,7 +59,6 @@ def test_settings_default_audio_presets(qapp):
         assert panel.apply_to(VeloxConfig()).clean_audio.default_audio == value
 
 
-
 def test_settings_commentary_applies_to_both(qapp):
     panel = SettingsPanel()
     panel.commentary.setChecked(True)
@@ -71,10 +69,14 @@ def test_settings_commentary_applies_to_both(qapp):
 
 def test_results_panel_collects_rows(qapp):
     panel = ResultsPanel()
-    panel.add_pass("movie.mkv", PassEvent(steps=["Clean Audio"], kind="remux",
-                                          input_bytes=1000, output_bytes=600))
-    panel.add_pass("movie.mkv", PassEvent(steps=["Transcode"], kind="transcode",
-                                          input_bytes=600, output_bytes=300))
+    panel.add_pass(
+        "movie.mkv",
+        PassEvent(steps=["Clean Audio"], kind="remux", input_bytes=1000, output_bytes=600),
+    )
+    panel.add_pass(
+        "movie.mkv",
+        PassEvent(steps=["Transcode"], kind="transcode", input_bytes=600, output_bytes=300),
+    )
     assert panel.table.rowCount() == 2
     assert panel.table.item(0, 4).text() == "−400 B"
 
@@ -82,15 +84,42 @@ def test_results_panel_collects_rows(qapp):
 def _make_sample(path: Path) -> None:
     subprocess.run(
         [
-            FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=1",
-            "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
-            "-f", "lavfi", "-i", "sine=frequency=660:duration=1",
+            FFMPEG,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=160x120:rate=10:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=660:duration=1",
             # audio first (forces a reorder) + an unwanted jpn track
-            "-map", "1:a", "-map", "0:v", "-map", "2:a",
-            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac",
-            "-metadata:s:a:0", "language=eng",
-            "-metadata:s:a:1", "language=jpn",
+            "-map",
+            "1:a",
+            "-map",
+            "0:v",
+            "-map",
+            "2:a",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-metadata:s:a:0",
+            "language=eng",
+            "-metadata:s:a:1",
+            "language=jpn",
             str(path),
         ],
         check=True,
@@ -196,4 +225,3 @@ def test_status_line_aggregates_parallel_files(qapp, tmp_path, monkeypatch):
         RunReport(source=Path(b), final_path=Path(b), original_bytes=1, final_bytes=1)
     )
     assert "A.mkv" in window.status_label.text()
-

@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..config import DEFAULT_ORDER, VeloxConfig
-from .presets import DEFAULT_PRESET, QUALITY_PRESETS, PRESET_LABELS, preset_for_bpp
+from .presets import DEFAULT_PRESET, PRESET_LABELS, QUALITY_PRESETS, preset_for_bpp
 
 ENCODERS = [
     ("Apple VideoToolbox HEVC (recommended)", "hevc_videotoolbox"),
@@ -81,12 +81,14 @@ def _spin(minimum: int, maximum: int, value: int, suffix: str = "") -> QSpinBox:
     return box
 
 
-def _dspin(minimum: float, maximum: float, value: float, decimals: int, suffix: str = "") -> QDoubleSpinBox:
+def _dspin(
+    minimum: float, maximum: float, value: float, decimals: int, suffix: str = ""
+) -> QDoubleSpinBox:
     box = QDoubleSpinBox()
     box.setDecimals(decimals)
     box.setRange(minimum, maximum)
     box.setValue(value)
-    box.setSingleStep(10 ** -decimals)
+    box.setSingleStep(10**-decimals)
     if suffix:
         box.setSuffix(suffix)
     return box
@@ -295,12 +297,16 @@ class SettingsPanel(QWidget):
     def _audio_group(self) -> QGroupBox:
         form = QFormLayout()
         self.audio_langs = QLineEdit("eng,und")
-        self.audio_langs.setToolTip("ISO-639-2 codes to keep, comma separated. Keep 'und' for untagged.")
+        self.audio_langs.setToolTip(
+            "ISO-639-2 codes to keep, comma separated. Keep 'und' for untagged."
+        )
         self.audio_codec = QComboBox()
         self.audio_codec.addItems(AUDIO_CODECS)
         self.audio_cap = _spin(0, 1536, 256, " kbps")
         self.audio_cap.setSpecialValueText("keep original")
-        self.audio_cap.setToolTip("Cap audio bitrate so it cannot eat the video budget. 0 = keep original.")
+        self.audio_cap.setToolTip(
+            "Cap audio bitrate so it cannot eat the video budget. 0 = keep original."
+        )
         self.default_audio = QComboBox()
         self.default_audio.setEditable(True)
         for label in DEFAULT_AUDIO_PRESETS:

@@ -6,9 +6,10 @@ Re-orders streams by a configurable set of properties
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from ..media import CHANNEL_LABELS, MediaInfo, VIDEO, stream_type
+from ..media import CHANNEL_LABELS, VIDEO, MediaInfo, stream_type
 from .base import PipelineContext, Plugin, PluginResult, RemuxPlan
 from .reorder_streams import type_order
 

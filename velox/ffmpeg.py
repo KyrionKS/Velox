@@ -7,8 +7,9 @@ import logging
 import shutil
 import subprocess
 import threading
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from .errors import CancelledError, FFmpegError, ToolNotFoundError
 from .media import MediaInfo
@@ -19,8 +20,8 @@ log = logging.getLogger("velox")
 # from the Finder gets a minimal environment on macOS).
 _FALLBACK_DIRS = (
     "/opt/homebrew/bin",  # Apple Silicon Homebrew
-    "/usr/local/bin",     # Intel Homebrew
-    "/opt/local/bin",     # MacPorts
+    "/usr/local/bin",  # Intel Homebrew
+    "/opt/local/bin",  # MacPorts
     "/usr/bin",
 )
 
@@ -116,9 +117,7 @@ class FFmpegTools:
         ]
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise FFmpegError(
-                f"ffprobe failed for {path.name}: {result.stderr.strip()}", command
-            )
+            raise FFmpegError(f"ffprobe failed for {path.name}: {result.stderr.strip()}", command)
         try:
             data: dict[str, Any] = json.loads(result.stdout or "{}")
         except json.JSONDecodeError as exc:
@@ -146,9 +145,7 @@ class FFmpegTools:
             result = subprocess.run(command, capture_output=True, text=True, check=False)
             if result.returncode != 0:
                 tail = "\n".join(result.stderr.strip().splitlines()[-12:])
-                raise FFmpegError(
-                    f"ffmpeg failed (exit {result.returncode}).\n{tail}", command
-                )
+                raise FFmpegError(f"ffmpeg failed (exit {result.returncode}).\n{tail}", command)
             return command
         return self._run_streaming(command, duration, progress, cancel)
 
@@ -168,8 +165,7 @@ class FFmpegTools:
 
         def drain() -> None:
             if proc.stderr is not None:
-                for line in proc.stderr:
-                    stderr_lines.append(line)
+                stderr_lines.extend(proc.stderr)
 
         reader = threading.Thread(target=drain, daemon=True)
         reader.start()
@@ -211,9 +207,7 @@ class FFmpegTools:
             raise CancelledError("Processing stopped by user")
         if proc.returncode != 0:
             tail = "\n".join("".join(stderr_lines).strip().splitlines()[-12:])
-            raise FFmpegError(
-                f"ffmpeg failed (exit {proc.returncode}).\n{tail}", list(full)
-            )
+            raise FFmpegError(f"ffmpeg failed (exit {proc.returncode}).\n{tail}", list(full))
         if progress is not None:
             progress(1.0)
         return list(command)
@@ -232,11 +226,15 @@ class FFmpegTools:
                 for line in out.stdout.splitlines():
                     parts = line.split()
                     # listings look like: " V....D hevc_videotoolbox ..."
-                    if len(parts) >= 2 and parts[0][:1] in {"V", "A", "S"} and parts[1].endswith(
-                        ("_nvenc", "_qsv", "_amf", "_videotoolbox", "_vaapi", "_v4l2m2m")
+                    if (
+                        len(parts) >= 2
+                        and parts[0][:1] in {"V", "A", "S"}
+                        and parts[1].endswith(
+                            ("_nvenc", "_qsv", "_amf", "_videotoolbox", "_vaapi", "_v4l2m2m")
+                        )
+                        or len(parts) >= 2
+                        and parts[0].startswith("V")
                     ):
-                        self._encoders.add(parts[1])
-                    elif len(parts) >= 2 and parts[0].startswith("V"):
                         self._encoders.add(parts[1])
             except OSError:  # pragma: no cover
                 pass
