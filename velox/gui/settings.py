@@ -349,6 +349,10 @@ class SettingsPanel(QWidget):
             "Also decode the whole output to catch corrupt frames.\n"
             "Reads the file once more (expensive on a NAS)."
         )
+        self.write_report = QCheckBox("Write a report next to each file")
+        self.write_report.setToolTip(
+            "Saves '<name>-report.txt' with the steps, sizes and settings."
+        )
         self.output_dir = QLineEdit()
         self.output_dir.setPlaceholderText("(same folder as the source)")
         browse_out = QPushButton("Browse…")
@@ -366,6 +370,7 @@ class SettingsPanel(QWidget):
         form.addRow("", self.keep_original)
         form.addRow("", self.verify_output)
         form.addRow("", self.verify_full_decode)
+        form.addRow("", self.write_report)
         form.addRow("Output folder", out_widget)
         form.addRow("Temp folder", self.temp_dir)
         self.verify_output.toggled.connect(self.verify_full_decode.setEnabled)
@@ -493,6 +498,7 @@ class SettingsPanel(QWidget):
         self.verify_output.setChecked(general.verify_output)
         self.verify_full_decode.setChecked(general.verify_full_decode)
         self.verify_full_decode.setEnabled(general.verify_output)
+        self.write_report.setChecked(general.write_report)
         self.output_dir.setText(general.output_dir or "")
         self.temp_dir.setText(str(general.temp_dir or "source"))
 
@@ -544,6 +550,7 @@ class SettingsPanel(QWidget):
         config.general.keep_original = self.keep_original.isChecked()
         config.general.verify_output = self.verify_output.isChecked()
         config.general.verify_full_decode = self.verify_full_decode.isChecked()
+        config.general.write_report = self.write_report.isChecked()
         config.general.output_dir = self.output_dir.text().strip() or None
         config.general.temp_dir = self.temp_dir.text().strip() or "source"
 

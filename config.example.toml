@@ -31,6 +31,8 @@ concurrency = 2
 verify_output = true
 # Also fully decode the output to catch corrupt frames (slower).
 verify_full_decode = false
+# Write a report ("<name>-report.txt") next to each processed file.
+write_report = true
 # Also process files without a video stream.
 process_non_video = false
 

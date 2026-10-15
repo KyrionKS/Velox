@@ -681,3 +681,50 @@ def test_read_only_directory_is_handled(tmp_path: Path):
     assert not report.ok  # permission error is reported, not raised
     assert report.error
     assert source.exists()
+
+
+def test_report_written_on_success(tmp_path: Path):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    config = _no_backup_config()
+    config.general.write_report = True
+
+    report = Pipeline(config).process(source)
+
+    assert report.ok and report.modified
+    assert report.report_path is not None
+    assert report.report_path.name == "sample-report.txt"
+    text = report.report_path.read_text(encoding="utf-8")
+    assert "VELOX" in text
+    assert "Clean Audio Tracks" in text  # a step name
+    assert "GESAMT" in text
+
+
+def test_report_written_on_error_includes_message(tmp_path: Path, monkeypatch):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    config = _no_backup_config()
+    config.general.write_report = True
+
+    pipeline = Pipeline(config)
+    monkeypatch.setattr(Pipeline, "_verify_output", lambda self, *args, **kwargs: "kaputte Ausgabe")
+    report = pipeline.process(source)
+
+    assert not report.ok
+    assert report.report_path is not None and report.report_path.exists()
+    text = report.report_path.read_text(encoding="utf-8")
+    assert "FEHLER" in text
+    assert "kaputte Ausgabe" in text
+
+
+def test_report_can_be_disabled(tmp_path: Path):
+    source = tmp_path / "sample.mkv"
+    _make_sample(source)
+    config = _no_backup_config()
+    config.general.write_report = False
+
+    report = Pipeline(config).process(source)
+
+    assert report.ok and report.modified
+    assert report.report_path is None
+    assert not (tmp_path / "sample-report.txt").exists()

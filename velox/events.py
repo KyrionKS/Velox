@@ -22,6 +22,8 @@ class PassEvent:
     input_bytes: int
     output_bytes: int
     command: list[str] = field(default_factory=list)
+    # structured stream-copy plan (for the report), when kind == "remux"
+    plan: Any = None
 
     @property
     def saved_bytes(self) -> int:

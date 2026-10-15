@@ -62,6 +62,9 @@ class GeneralConfig:
     # Also fully decode the output with ffmpeg to catch corrupt frames. Slower:
     # it reads the whole file once more (expensive on a NAS).
     verify_full_decode: bool = False
+    # Write a short, human readable report ("<name>-report.txt") next to each
+    # processed file, summarising the steps and the space saved.
+    write_report: bool = True
     # Also process files that are not detected as video (default: skip).
     process_non_video: bool = False
 

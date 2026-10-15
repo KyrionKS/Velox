@@ -115,6 +115,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Process this many files in parallel (default from the config).",
     )
+    parser.add_argument(
+        "--report",
+        dest="write_report",
+        action="store_true",
+        default=None,
+        help="Write a report next to each file (overrides the config).",
+    )
+    parser.add_argument(
+        "--no-report",
+        dest="write_report",
+        action="store_false",
+        help="Do not write a report.",
+    )
     parser.add_argument("--ffmpeg", help="Path to the ffmpeg binary (overrides config).")
     parser.add_argument("--ffprobe", help="Path to the ffprobe binary (overrides config).")
     parser.add_argument(
@@ -235,6 +248,8 @@ def main(argv: list[str] | None = None) -> int:
         config.hevc_gpu.bitrate_mode = "tier"
     if args.jobs is not None:
         config.general.concurrency = max(1, args.jobs)
+    if args.write_report is not None:
+        config.general.write_report = args.write_report
     _apply_plugin_selection(config, args.only, args.skip)
 
     if not args.paths:

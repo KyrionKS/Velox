@@ -32,6 +32,7 @@ from .ffmpeg import FFmpegTools
 from .logging_setup import get_logger
 from .media import MediaInfo, stream_type
 from .plugins import PLUGIN_MAP, PipelineContext, Plugin, PluginResult, RemuxPlan
+from .report import write_report
 
 TYPE_SPEC = {"video": "v", "audio": "a", "subtitle": "s", "data": "d", "attachment": "t"}
 
@@ -64,6 +65,10 @@ class RunReport:
     original_bytes: int = 0
     final_bytes: int = 0
     elapsed: float = 0.0
+    original_media: MediaInfo | None = None
+    final_media: MediaInfo | None = None
+    report_path: Path | None = None
+    kept_original: bool = False
     passes: list[PassEvent] = field(default_factory=list)
     outcomes: list[PluginOutcome] = field(default_factory=list)
 
@@ -135,6 +140,7 @@ class Pipeline:
             return report
 
         report.original_bytes = original.size
+        report.original_media = original
 
         if not original.is_video and not self.config.general.process_non_video:
             report.skipped = True
@@ -235,6 +241,7 @@ class Pipeline:
                     input_bytes=input_bytes,
                     output_bytes=output_bytes,
                     command=command,
+                    plan=plan,
                 )
                 report.passes.append(event)
                 observer.on_pass_finished(event)
@@ -344,6 +351,7 @@ class Pipeline:
                     if problem:
                         raise PluginError(f"Output verification failed: {problem}", "verify")
                 report.final_path = self._commit(current, source)
+                report.kept_original = self.config.general.keep_original
                 if not self.config.general.keep_original:
                     self._remove_backup(source)
                 self.log.info("✓ Wrote %s", report.final_path)
@@ -356,15 +364,24 @@ class Pipeline:
 
             if report.final_path is not None:
                 report.final_bytes = _size_of(report.final_path)
+                if modified:
+                    try:
+                        report.final_media = self.ffmpeg.probe(report.final_path)
+                    except VeloxError:
+                        report.final_media = None
+            if modified:
+                self._maybe_write_report(report)
 
         except CancelledError as exc:
             report.cancelled = True
             report.error = str(exc)
             self.log.warning("■ %s: %s", source.name, exc)
+            self._maybe_write_report(report)
         except (VeloxError, OSError) as exc:
             report.error = str(exc)
             self.log.error("✗ %s: %s", source.name, exc)
             observer.on_error(str(exc))
+            self._maybe_write_report(report)
         finally:
             if tmpdir is not None:
                 shutil.rmtree(tmpdir, ignore_errors=True)
@@ -480,6 +497,19 @@ class Pipeline:
         probe = dict(media.probe)
         probe["streams"] = streams
         return MediaInfo.from_probe(media.path, probe, media.size)
+
+    # ------------------------------------------------------------ reports
+    def _maybe_write_report(self, report: RunReport) -> None:
+        """Schreibt einen Bericht neben das Ergebnis (falls aktiviert)."""
+        if not self.config.general.write_report:
+            return
+        if not (report.modified or report.error or report.cancelled):
+            return
+        try:
+            report.report_path = write_report(report, self.config)
+            self.log.info("Report: %s", report.report_path)
+        except OSError as exc:  # pragma: no cover - best effort
+            self.log.warning("Could not write report: %s", exc)
 
     # --------------------------------------------------------- verification
     def _verify_output(
