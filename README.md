@@ -95,6 +95,15 @@ successful encode only the new (smaller) file remains — no leftovers. Use
 `--keep-original` to keep a `.velox-orig` copy, or `--output-dir DIR` to leave
 the originals untouched entirely.
 
+### Report
+
+For every file that is changed (or fails) Velox can write a short, human
+readable report next to it: `<name>-report.txt`. It lists the state before, the
+individual passes with their savings and concrete changes (e.g. "audio track #2
+removed"), the state after, the total saving and the settings used — and, when
+something went wrong, the error. Enabled by default (`write_report`); disable it
+with `--no-report` or the checkbox under *Settings → Output*.
+
 ## Desktop app (PySide6)
 
 A native macOS window built around a **sidebar** (Files · Settings · Results)
