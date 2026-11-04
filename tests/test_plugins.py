@@ -31,6 +31,7 @@ def astream(
     title: str | None = None,
     channels: int = 2,
     bitrate: int | None = None,
+    channel_layout: str | None = None,
 ) -> dict[str, Any]:
     stream: dict[str, Any] = {
         "index": index,
@@ -38,6 +39,8 @@ def astream(
         "codec_name": codec,
         "channels": channels,
     }
+    if channel_layout is not None:
+        stream["channel_layout"] = channel_layout
     tags: dict[str, str] = {}
     if lang is not None:
         tags["language"] = lang
@@ -73,15 +76,30 @@ def make_media(
 
 
 class FakeFFmpeg:
-    def __init__(self, available: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        available: set[str] | None = None,
+        audio_available: set[str] | None = None,
+    ) -> None:
         self.available = available or set()
+        # Native AAC is always available; callers can add libfdk_aac.
+        self.audio_available = audio_available if audio_available is not None else {"aac"}
 
     def has_encoder(self, encoder, input_args=None, video_filter=None) -> bool:
         return encoder in self.available
 
+    def has_audio_encoder(self, encoder: str) -> bool:
+        return encoder in self.audio_available
 
-def make_ctx(media: MediaInfo, available: set[str] | None = None) -> PipelineContext:
-    return PipelineContext(ffmpeg=FakeFFmpeg(available), original_media=media)  # type: ignore[arg-type]
+
+def make_ctx(
+    media: MediaInfo,
+    available: set[str] | None = None,
+    audio_available: set[str] | None = None,
+) -> PipelineContext:
+    return PipelineContext(  # type: ignore[arg-type]
+        ffmpeg=FakeFFmpeg(available, audio_available), original_media=media
+    )
 
 
 # ------------------------------------------------------------ reorder_streams
@@ -231,11 +249,50 @@ def test_standardise_audio_transcodes_non_target_codec():
     assert result.process_file
     assert result.remux is not None
     assert result.remux.codecs == {1: "aac"}
+    assert result.remux.channels == {1: 2}
     assert result.remux.bitrates == {1: "640k"}
 
 
+def test_standardise_audio_forces_51_channel_count():
+    # 5.1(side) sources must get -ac 6, otherwise FFmpeg writes a broken PCE
+    # layout (no LFE) that many players mis-handle.
+    media = make_media(
+        [
+            vstream(0),
+            astream(
+                1,
+                codec="eac3",
+                channels=6,
+                bitrate=640_000,
+                channel_layout="5.1(side)",
+            ),
+        ]
+    )
+    result = StandardiseAudioPlugin(VeloxConfig().standardise_audio).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    assert result.remux.channels == {1: 6}
+    assert result.remux.codecs == {1: "aac"}
+
+
 def test_standardise_audio_noop_when_already_target():
-    media = make_media([vstream(0), astream(1, codec="aac")])
+    media = make_media([vstream(0), astream(1, codec="aac", channel_layout="stereo")])
+    result = StandardiseAudioPlugin(VeloxConfig().standardise_audio).run(media, make_ctx(media))
+    assert not result.process_file
+
+
+def test_standardise_audio_repairs_broken_aac_layout():
+    # AAC with >2 channels but no channel layout is the broken 5.1 encoding.
+    media = make_media([vstream(0), astream(1, codec="aac", channels=6, bitrate=640_000)])
+    result = StandardiseAudioPlugin(VeloxConfig().standardise_audio).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    assert result.remux.codecs == {1: "aac"}
+    assert result.remux.channels == {1: 6}
+
+
+def test_standardise_audio_leaves_valid_multichannel_aac_alone():
+    media = make_media([vstream(0), astream(1, codec="aac", channels=6, channel_layout="5.1")])
     result = StandardiseAudioPlugin(VeloxConfig().standardise_audio).run(media, make_ctx(media))
     assert not result.process_file
 
@@ -250,15 +307,64 @@ def test_standardise_audio_caps_bitrate_on_transcode():
     assert result.remux.bitrates == {1: "192k"}
 
 
-def test_standardise_audio_caps_matching_codec_above_cap():
+def test_standardise_audio_surround_floor_raises_the_cap():
+    config = VeloxConfig().standardise_audio
+    config.audio_bitrate_kbps = 256
+    config.audio_bitrate_min_per_channel_kbps = 128
+    media = make_media([vstream(0), astream(1, codec="eac3", channels=6, bitrate=1_500_000)])
+    result = StandardiseAudioPlugin(config).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    # 6 * 128 = 768k beats the flat 256k cap, but never above the source.
+    assert result.remux.bitrates == {1: "768k"}
+
+
+def test_standardise_audio_skips_matching_codec_above_cap_by_default():
     config = VeloxConfig().standardise_audio
     config.audio_bitrate_kbps = 192
-    media = make_media([vstream(0), astream(1, codec="aac", bitrate=640_000)])
+    media = make_media([vstream(0), astream(1, codec="aac", channels=2, bitrate=640_000)])
+    result = StandardiseAudioPlugin(config).run(media, make_ctx(media))
+    assert not result.process_file
+
+
+def test_standardise_audio_caps_matching_codec_when_explicitly_enabled():
+    config = VeloxConfig().standardise_audio
+    config.audio_bitrate_kbps = 192
+    config.reencode_target_codec = True
+    media = make_media([vstream(0), astream(1, codec="aac", channels=2, bitrate=640_000)])
     result = StandardiseAudioPlugin(config).run(media, make_ctx(media))
     assert result.process_file
     assert result.remux is not None
     assert result.remux.codecs == {1: "aac"}
     assert result.remux.bitrates == {1: "192k"}
+
+
+def test_standardise_audio_downmixes_for_codecs_with_channel_limits():
+    config = VeloxConfig().standardise_audio
+    config.audio_codec = "ac3"
+    media = make_media([vstream(0), astream(1, codec="eac3", channels=8, bitrate=1_000_000)])
+    result = StandardiseAudioPlugin(config).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    assert result.remux.channels == {1: 6}
+
+
+def test_standardise_audio_prefers_fdk_aac_when_available():
+    media = make_media([vstream(0), astream(1, codec="eac3", channels=6, bitrate=640_000)])
+    result = StandardiseAudioPlugin(VeloxConfig().standardise_audio).run(
+        media, make_ctx(media, audio_available={"aac", "libfdk_aac"})
+    )
+    assert result.remux is not None
+    assert result.remux.codecs == {1: "libfdk_aac"}
+
+
+def test_standardise_audio_uses_native_aac_when_fdk_missing():
+    config = VeloxConfig().standardise_audio
+    config.aac_encoder = "libfdk_aac"
+    media = make_media([vstream(0), astream(1, codec="eac3", channels=6, bitrate=640_000)])
+    result = StandardiseAudioPlugin(config).run(media, make_ctx(media, audio_available={"aac"}))
+    assert result.remux is not None
+    assert result.remux.codecs == {1: "aac"}
 
 
 # --------------------------------------------------------------- hevc_gpu

@@ -73,6 +73,29 @@ def test_output_indices_are_remapped_after_drops():
     ]
 
 
+def test_channel_count_uses_output_specifier():
+    # A dropped stream shifts the output index; -ac must follow it.
+    m = media([v(0), a(1, "eng"), a(2, "eng")])
+    plan = RemuxPlan(drop={1}, codecs={2: "aac"}, channels={2: 6}, bitrates={2: "640k"})
+    args = Pipeline._build_remux_args(plan, m)
+    assert args == [
+        "-map",
+        "0:0",
+        "-map",
+        "0:2",
+        "-c",
+        "copy",
+        "-c:a:0",
+        "aac",
+        "-ac:a:0",
+        "6",
+        "-b:a:0",
+        "640k",
+        "-max_muxing_queue_size",
+        "9999",
+    ]
+
+
 def test_metadata_uses_output_specifier():
     m = media([v(0), a(1, "und"), a(2, "jpn")])
     plan = RemuxPlan(drop={2}, metadata={1: [("language", "eng"), ("title", "2.0")]})
@@ -137,17 +160,20 @@ def test_noop_plan_produces_no_args():
     assert Pipeline._build_remux_args(RemuxPlan(), m) == []
     # order equal to the current order is also a no-op
     assert Pipeline._build_remux_args(RemuxPlan(order=[0, 1]), m) == []
+    # a channel change alone is still a real operation
+    assert Pipeline._build_remux_args(RemuxPlan(channels={1: 2}), m) != []
 
 
 def test_plan_merge_unions_and_overrides():
     first = RemuxPlan(drop={2}, metadata={1: [("language", "eng")]})
-    second = RemuxPlan(order=[0, 1, 3], codecs={3: "aac"})
+    second = RemuxPlan(order=[0, 1, 3], codecs={3: "aac"}, channels={3: 6})
     third = RemuxPlan(drop={4})
     first.merge(second)
     first.merge(third)
     assert first.drop == {2, 4}
     assert first.order == [0, 1, 3]
     assert first.codecs == {3: "aac"}
+    assert first.channels == {3: 6}
     assert first.metadata == {1: [("language", "eng")]}
 
 

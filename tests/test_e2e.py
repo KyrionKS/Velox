@@ -143,6 +143,54 @@ def _make_sample(path: Path) -> None:
     subtitle.unlink()
 
 
+def _has_encoder(name: str) -> bool:
+    if not FFMPEG:
+        return False
+    out = subprocess.run(
+        [FFMPEG, "-hide_banner", "-encoders"], capture_output=True, text=True, check=False
+    )
+    return name in out.stdout
+
+
+def _make_surround_sample(path: Path) -> None:
+    """Tiny mkv with h264 video and a 5.1 E-AC-3 track."""
+    command = [
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=size=320x240:rate=15:duration=2",
+        "-f",
+        "lavfi",
+        "-i",
+        (
+            "aevalsrc=sin(440*2*PI*t)|sin(550*2*PI*t)|sin(660*2*PI*t)|"
+            "sin(60*2*PI*t)|sin(770*2*PI*t)|sin(880*2*PI*t):"
+            "s=48000:d=2:c=5.1"
+        ),
+        "-map",
+        "0:v",
+        "-map",
+        "1:a",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "eac3",
+        "-b:a",
+        "640k",
+        str(path),
+    ]
+    subprocess.run(command, check=True, capture_output=True)
+
+
 def _make_pipeline(config: VeloxConfig) -> Pipeline:
     config.general.ffmpeg_path = FFMPEG  # type: ignore[assignment]
     config.general.ffprobe_path = FFPROBE  # type: ignore[assignment]
@@ -177,6 +225,32 @@ def test_end_to_end_clean_and_reorder(tmp_path: Path):
     assert media.streams[0]["codec_type"] == "video"
     # Backup created because _make_pipeline enables keep_original.
     assert (tmp_path / "sample.velox-orig.mkv").exists()
+
+
+@pytest.mark.skipif(not _has_encoder("eac3"), reason="eac3 encoder not available")
+def test_end_to_end_aac_keeps_standard_51_layout(tmp_path: Path):
+    source = tmp_path / "surround.mkv"
+    _make_surround_sample(source)
+
+    config = VeloxConfig()
+    config.clean_audio.enabled = False
+    config.clean_subs.enabled = False
+    config.reorder_all_streams.enabled = False
+    config.file_size_check.enabled = False
+    config.hevc_gpu.enabled = False
+    config.standardise_audio.audio_codec = "aac"
+    config.standardise_audio.aac_encoder = "aac"
+    config.standardise_audio.audio_bitrate_kbps = 0
+    pipeline = _make_pipeline(config)
+
+    report = pipeline.process(source)
+    assert report.ok, report.error
+    media = pipeline.probe(report.final_path)
+    audio = next(s for s in media.streams if s.get("codec_type") == "audio")
+    assert audio["codec_name"] == "aac"
+    assert audio["channels"] == 6
+    # Without -ac 6 this is "unknown" (broken PCE / hexagonal layout).
+    assert audio["channel_layout"] == "5.1"
 
 
 def test_end_to_end_cpu_transcode(tmp_path: Path):

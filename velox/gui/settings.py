@@ -302,10 +302,34 @@ class SettingsPanel(QWidget):
         )
         self.audio_codec = QComboBox()
         self.audio_codec.addItems(AUDIO_CODECS)
-        self.audio_cap = _spin(0, 1536, 256, " kbps")
+        self.audio_cap = _spin(0, 1536, 0, " kbps")
         self.audio_cap.setSpecialValueText("keep original")
         self.audio_cap.setToolTip(
-            "Cap audio bitrate so it cannot eat the video budget. 0 = keep original."
+            "Optional bitrate cap so audio cannot eat the video budget.\n"
+            "0 = keep the original bitrate (recommended: any cap can only\n"
+            "lose quality)."
+        )
+        self.audio_min_per_ch = _spin(0, 512, 128, " kbps/ch")
+        self.audio_min_per_ch.setSpecialValueText("off")
+        self.audio_min_per_ch.setToolTip(
+            "When a cap is set, surround tracks (>2 channels) get at least\n"
+            "this many kbps per channel. Prevents a single cap from crushing\n"
+            "5.1/7.1 audio (e.g. 256k for 5.1 is only ~43k/channel).\n"
+            "0 = disabled."
+        )
+        self.aac_encoder = QComboBox()
+        self.aac_encoder.addItem("Automatic (libfdk_aac if available)", "auto")
+        self.aac_encoder.addItem("Native FFmpeg (aac)", "aac")
+        self.aac_encoder.addItem("libfdk_aac (better at low bitrates)", "libfdk_aac")
+        self.aac_encoder.setToolTip(
+            "AAC encoder. 'Automatic' prefers libfdk_aac when the installed\n"
+            "ffmpeg provides it and falls back to the native encoder."
+        )
+        self.reencode_target = QCheckBox("Also re-encode tracks already in the target codec")
+        self.reencode_target.setToolTip(
+            "Off (recommended): a track that already uses the output codec is\n"
+            "left untouched. Re-encoding lossy audio again only adds\n"
+            "generation loss."
         )
         self.default_audio = QComboBox()
         self.default_audio.setEditable(True)
@@ -318,7 +342,14 @@ class SettingsPanel(QWidget):
         form.addRow("Keep languages", self.audio_langs)
         form.addRow("Output codec", self.audio_codec)
         form.addRow("Bitrate cap", self.audio_cap)
+        form.addRow("Min. per channel", self.audio_min_per_ch)
+        form.addRow("AAC encoder", self.aac_encoder)
+        form.addRow("", self.reencode_target)
         form.addRow("Default track", self.default_audio)
+        self._aform = form
+        self.audio_cap.valueChanged.connect(self._update_audio_visibility)
+        self.audio_codec.currentTextChanged.connect(self._update_audio_visibility)
+        self._update_audio_visibility()
         return self._group("Tracks", form)
 
     def _subtitles_group(self) -> QGroupBox:
@@ -448,6 +479,12 @@ class SettingsPanel(QWidget):
         self._vform.setRowVisible(self.bpp, tier)
         self._vform.setRowVisible(self.target_size, mode == "size")
 
+    def _update_audio_visibility(self) -> None:
+        # The per-channel floor only matters when a cap is set; the encoder
+        # choice only matters for AAC.
+        self._aform.setRowVisible(self.audio_min_per_ch, self.audio_cap.value() > 0)
+        self._aform.setRowVisible(self.aac_encoder, self.audio_codec.currentText().lower() == "aac")
+
     def _browse_output_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose output folder")
         if path:
@@ -477,6 +514,9 @@ class SettingsPanel(QWidget):
         self.audio_langs.setText(audio.language)
         self._set_combo_text(self.audio_codec, config.standardise_audio.audio_codec)
         self.audio_cap.setValue(config.standardise_audio.audio_bitrate_kbps)
+        self.audio_min_per_ch.setValue(config.standardise_audio.audio_bitrate_min_per_channel_kbps)
+        self._set_combo_data(self.aac_encoder, config.standardise_audio.aac_encoder)
+        self.reencode_target.setChecked(config.standardise_audio.reencode_target_codec)
         default_audio = str(audio.default_audio or "")
         label = DEFAULT_AUDIO_REVERSE.get(default_audio)
         if label is not None:
@@ -516,6 +556,7 @@ class SettingsPanel(QWidget):
         self.ffmpeg_path.setText(general.ffmpeg_path)
         self.ffprobe_path.setText(general.ffprobe_path)
         self._update_mode_visibility()
+        self._update_audio_visibility()
 
     def apply_to(self, config: VeloxConfig) -> VeloxConfig:
         config = config.copy()
@@ -533,6 +574,9 @@ class SettingsPanel(QWidget):
         config.clean_audio.language = self.audio_langs.text().strip() or "eng,und"
         config.standardise_audio.audio_codec = self.audio_codec.currentText()
         config.standardise_audio.audio_bitrate_kbps = self.audio_cap.value()
+        config.standardise_audio.audio_bitrate_min_per_channel_kbps = self.audio_min_per_ch.value()
+        config.standardise_audio.aac_encoder = self.aac_encoder.currentData() or "auto"
+        config.standardise_audio.reencode_target_codec = self.reencode_target.isChecked()
         default_text = self.default_audio.currentText().strip()
         config.clean_audio.default_audio = DEFAULT_AUDIO_PRESETS.get(default_text, default_text)
 

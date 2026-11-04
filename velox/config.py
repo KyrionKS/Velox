@@ -110,10 +110,23 @@ class StandardiseAudioConfig(PluginConfigBase):
     """Standardise Audio Codec."""
 
     audio_codec: str = "aac"
-    # Cap the audio bitrate (kbps) so audio cannot eat the video size budget.
-    # 0 = keep the source bitrate (original behaviour). Tracks already in the
-    # target codec are only re-encoded when they exceed this cap.
+    # Absolute bitrate cap (kbps). 0 = keep the source bitrate (default).
+    # A cap is opt-in: it can only lose quality, so the default leaves the
+    # source untouched.
     audio_bitrate_kbps: int = 0
+    # When a cap is set, surround tracks (>2 channels) still get at least this
+    # many kbps per channel, so one global cap cannot crush 5.1/7.1 audio
+    # (e.g. 256k for 5.1 is ~43k/channel). 0 = disabled.
+    audio_bitrate_min_per_channel_kbps: int = 128
+    # AAC encoder:
+    #   "auto"        -> libfdk_aac when available, otherwise native "aac"
+    #   "aac"         -> always the native FFmpeg encoder
+    #   "libfdk_aac"  -> prefer FDK, fall back to native if unavailable
+    aac_encoder: str = "auto"
+    # Also re-encode tracks that already use the target codec to enforce the
+    # cap.  Off by default: re-encoding lossy audio again only adds generation
+    # loss, and the track is already in the desired format.
+    reencode_target_codec: bool = False
 
 
 @dataclass

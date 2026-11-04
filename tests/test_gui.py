@@ -31,6 +31,9 @@ def test_settings_roundtrip(qapp):
     config.hevc_gpu.bitrate_mode = "size"
     config.clean_audio.language = "deu"
     config.standardise_audio.audio_bitrate_kbps = 128
+    config.standardise_audio.audio_bitrate_min_per_channel_kbps = 96
+    config.standardise_audio.aac_encoder = "libfdk_aac"
+    config.standardise_audio.reencode_target_codec = True
     config.clean_subs.sdh = False
     config.hevc_gpu.encoder = "libx265"
     config.clean_audio.default_audio = "eng"
@@ -42,6 +45,9 @@ def test_settings_roundtrip(qapp):
     assert result.hevc_gpu.bitrate_mode == "size"
     assert result.clean_audio.language == "deu"
     assert result.standardise_audio.audio_bitrate_kbps == 128
+    assert result.standardise_audio.audio_bitrate_min_per_channel_kbps == 96
+    assert result.standardise_audio.aac_encoder == "libfdk_aac"
+    assert result.standardise_audio.reencode_target_codec is True
     assert result.clean_subs.sdh is False
     assert result.hevc_gpu.encoder == "libx265"
     assert result.clean_audio.default_audio == "eng"

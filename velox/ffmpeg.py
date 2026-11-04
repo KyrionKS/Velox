@@ -57,6 +57,8 @@ class FFmpegTools:
         self.ffprobe_path = ffprobe_path
         self._encoder_cache: dict[str, bool] = {}
         self._encoders: set[str] | None = None
+        self._audio_encoder_cache: dict[str, bool] = {}
+        self._audio_encoders: set[str] | None = None
 
     # ------------------------------------------------------------- discovery
     @staticmethod
@@ -239,6 +241,32 @@ class FFmpegTools:
             except OSError:  # pragma: no cover
                 pass
         return self._encoders
+
+    def audio_encoders(self) -> set[str]:
+        """Names of the available *audio* encoders (cached)."""
+        if self._audio_encoders is None:
+            self._audio_encoders = set()
+            try:
+                out = subprocess.run(
+                    [self.ffmpeg_path, "-hide_banner", "-encoders"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                for line in out.stdout.splitlines():
+                    parts = line.split()
+                    # listings look like: " A....D aac   AAC (Advanced Audio Coding)"
+                    if len(parts) >= 3 and parts[0].startswith("A") and parts[1] != "=":
+                        self._audio_encoders.add(parts[1])
+            except OSError:  # pragma: no cover
+                pass
+        return self._audio_encoders
+
+    def has_audio_encoder(self, encoder: str) -> bool:
+        """Whether ffmpeg knows *encoder* (cached)."""
+        if encoder not in self._audio_encoder_cache:
+            self._audio_encoder_cache[encoder] = encoder in self.audio_encoders()
+        return self._audio_encoder_cache[encoder]
 
     def has_encoder(
         self,

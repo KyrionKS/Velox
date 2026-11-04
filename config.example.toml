@@ -80,9 +80,20 @@ tag_language = ""
 [plugins.standardise_audio]
 enabled = true
 audio_codec = "aac"
-# Cap audio bitrate (kbps) so audio cannot eat the video size budget.
-# 0 = keep the source bitrate. 256 is a good default for stereo/5.1 AAC.
-audio_bitrate_kbps = 256
+# Optional bitrate cap (kbps). 0 = keep the source bitrate (recommended).
+# Any cap can only lose quality, so leave this at 0 unless you need a size
+# budget.
+audio_bitrate_kbps = 0
+# When a cap is set, surround tracks (>2 channels) get at least this many
+# kbps per channel, so one global cap cannot crush 5.1/7.1 audio.
+# 0 = disabled.
+audio_bitrate_min_per_channel_kbps = 128
+# AAC encoder: "auto" = libfdk_aac when available, else native "aac";
+# "aac" = always native; "libfdk_aac" = prefer FDK (falls back if missing).
+aac_encoder = "auto"
+# Also re-encode tracks that already use the target codec to enforce the cap.
+# Off by default: lossy -> lossy re-encoding adds generation loss.
+reencode_target_codec = false
 
 # Encode Video
 [plugins.hevc_gpu]

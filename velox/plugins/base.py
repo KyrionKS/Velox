@@ -38,6 +38,12 @@ class RemuxPlan:
     order: list[int] | None = None
     # per-stream codec override, e.g. {3: "aac"}
     codecs: dict[int, str] = field(default_factory=dict)
+    # per-stream output channel count, e.g. {3: 6}
+    # Needed for AAC: without an explicit ``-ac`` FFmpeg encodes 5.1(side)
+    # sources (AC-3/E-AC-3/DTS) with a non-standard PCE channel layout that
+    # many players mis-handle.  It also downmixes when the target codec
+    # cannot carry all source channels.
+    channels: dict[int, int] = field(default_factory=dict)
     # per-stream bitrate, e.g. {3: "192k"}
     bitrates: dict[int, str] = field(default_factory=dict)
     # per-stream metadata, e.g. {3: [("language", "eng")]}
@@ -50,6 +56,7 @@ class RemuxPlan:
         if other.order is not None:
             self.order = list(other.order)
         self.codecs.update(other.codecs)
+        self.channels.update(other.channels)
         self.bitrates.update(other.bitrates)
         for index, items in other.metadata.items():
             self.metadata.setdefault(index, []).extend(items)
@@ -60,6 +67,7 @@ class RemuxPlan:
             self.drop
             or self.order is not None
             or self.codecs
+            or self.channels
             or self.bitrates
             or self.metadata
             or self.dispositions

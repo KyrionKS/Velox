@@ -28,6 +28,9 @@ def test_defaults_match_documented_values():
     assert config.file_size_check.upper_bound == 110
     assert config.file_size_check.lower_bound == 0
     assert config.standardise_audio.audio_bitrate_kbps == 0
+    assert config.standardise_audio.audio_bitrate_min_per_channel_kbps == 128
+    assert config.standardise_audio.aac_encoder == "auto"
+    assert config.standardise_audio.reencode_target_codec is False
     assert config.order == [
         "reorder_streams",
         "clean_audio",

@@ -426,6 +426,7 @@ class Pipeline:
         unchanged = (
             not plan.drop
             and not plan.codecs
+            and not plan.channels
             and not plan.bitrates
             and not plan.metadata
             and not plan.dispositions
@@ -452,6 +453,10 @@ class Pipeline:
             if index in out_index:
                 spec = TYPE_SPEC.get(stream_type(by_index[index]), "a")
                 args += [f"-c:{spec}:{out_index[index]}", codec]
+        for index, count in plan.channels.items():
+            if index in out_index:
+                spec = TYPE_SPEC.get(stream_type(by_index[index]), "a")
+                args += [f"-ac:{spec}:{out_index[index]}", str(count)]
         for index, bitrate in plan.bitrates.items():
             if index in out_index:
                 spec = TYPE_SPEC.get(stream_type(by_index[index]), "a")
@@ -488,6 +493,8 @@ class Pipeline:
             stream = dict(by_index[index])
             if index in plan.codecs:
                 stream["codec_name"] = plan.codecs[index]
+            if index in plan.channels:
+                stream["channels"] = plan.channels[index]
             tags = dict(stream.get("tags") or {})
             for key, value in plan.metadata.get(index, []):
                 tags[key] = value

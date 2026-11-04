@@ -159,11 +159,36 @@ option with comments. Key settings:
 - `clean_audio.default_audio = "eng"` — which kept audio track becomes the
   container/player default (`""` = unchanged, `"first"`, `"best"`, or a
   language code)
-- `standardise_audio.audio_codec = "aac"`, `audio_bitrate_kbps = 256`
-  (caps audio so it can't eat the video budget)
+- `standardise_audio.audio_codec = "aac"`, `audio_bitrate_kbps = 0`
+  (keep the original bitrate — a cap only loses quality)
 - `hevc_gpu.encoder = "hevc_videotoolbox"` (Apple Silicon)
 - `hevc_gpu.bitrate_mode = "quality"`, `quality = 50` (VideoToolbox `-q:v`, 1-100)
 - `hevc_gpu.hardware_decode = true` (VideoToolbox decode)
+
+### Audio
+
+`standardise_audio` re-encodes non-target audio tracks (AC-3, E-AC-3, DTS, …)
+to AAC. Two settings matter:
+
+- **Channel layout.** AC-3/E-AC-3/DTS decode as `5.1(side)`. Without an explicit
+  `-ac 6` FFmpeg writes a non-standard PCE layout (no LFE) that many players
+  mis-handle — dialogue and effects come out of the wrong speakers. Velox now
+  always passes the source channel count, clamped to what the target codec
+  supports (AAC 8, AC-3/E-AC-3 6, MP3 2). Files that were damaged by older
+  versions are detected (AAC, >2 channels, no channel layout) and repaired on
+  the next run.
+- **Bitrate.** The default `audio_bitrate_kbps = 0` keeps the source bitrate.
+  Setting a cap is opt-in. If you do set one,
+  `audio_bitrate_min_per_channel_kbps = 128` raises it for surround tracks so
+  5.1/7.1 keeps enough bits (a flat 256k cap for 5.1 is only ~43k/channel).
+  Tracks that already use the target codec are never re-encoded just to lower
+  their bitrate unless `reencode_target_codec = true` — repeated lossy encoding
+  only adds generation loss.
+
+`aac_encoder = "auto"` uses `libfdk_aac` when the installed ffmpeg provides it
+(better at low bitrates) and otherwise falls back to the native FFmpeg encoder.
+On Homebrew ffmpeg builds `libfdk_aac` is often not included, so the fallback is
+the normal case.
 
 ### Choosing the size/quality mode
 
