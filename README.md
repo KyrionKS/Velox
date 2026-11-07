@@ -112,7 +112,7 @@ the toolbar is unified with the title bar, the controls use the native system
 appearance (accent colour, dark mode, Liquid Glass), and the app menu has
 **Settings… (⌘,)** and **About Velox**. An app icon ships in `assets/`.
 
-- **Toolbar** — Add Files / Add Folder, and Start / Dry Run / Stop.
+- **Toolbar** — Add Files / Add Folder, and Start / Stop.
 - **Files** — a table with **one row per file** (progress, current step, result).
   Several files are processed **in parallel** (`Parallel files`, default 2).
 - **Settings** — a sub-sidebar (**Video · Audio · Subtitles · Output ·
@@ -123,8 +123,9 @@ appearance (accent colour, dark mode, Liquid Glass), and the app menu has
 
 The always-visible status strip shows the current file (x of y), the running
 step with percentage and an estimated time left, and an overall bar, with a
-collapsible *Details* log. *Dry run* previews without writing anything; *Stop*
-cancels safely (the original is never left half-processed). The window size is
+collapsible *Details* log. *Stop* cancels safely (the original is never left
+half-processed). For a preview without writing anything, use the CLI with
+`-n`/`--dry-run`. The window size is
 remembered, and settings live in
 `~/Library/Application Support/Velox/config.toml`.
 
