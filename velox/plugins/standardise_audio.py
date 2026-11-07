@@ -34,6 +34,22 @@ MAX_CHANNELS = {
 # AAC encoders in order of preference (``auto`` picks the first available).
 AAC_ENCODERS = ("libfdk_aac", "aac")
 
+# The GUI/config may name an encoder where ffprobe reports a different codec
+# name (and ffmpeg expects another encoder name again).  Normalise both
+# directions so a file already in the target codec is not re-encoded forever.
+CODEC_ALIASES = {
+    "libmp3lame": "mp3",
+    "libfdk_aac": "aac",
+    "libopus": "opus",
+    "libvorbis": "vorbis",
+    "libflac": "flac",
+}
+ENCODER_ALIASES = {
+    "mp3": "libmp3lame",
+    "opus": "libopus",
+    "vorbis": "libvorbis",
+}
+
 
 class StandardiseAudioPlugin(Plugin):
     key = "standardise_audio"
@@ -54,6 +70,8 @@ class StandardiseAudioPlugin(Plugin):
         if not target:
             result.note("☒ No audio codec configured, skipping this plugin.")
             return result
+        # Compare against the codec name ffprobe reports, not the encoder name.
+        target = CODEC_ALIASES.get(target, target)
 
         cap = int(getattr(self.config, "audio_bitrate_kbps", 0) or 0)
         min_per_channel = int(getattr(self.config, "audio_bitrate_min_per_channel_kbps", 128) or 0)
@@ -61,7 +79,7 @@ class StandardiseAudioPlugin(Plugin):
         encoder, encoder_note = self._resolve_encoder(target, ctx)
         if encoder_note:
             result.note(encoder_note)
-        encoder_label = encoder if target == "aac" else target
+        encoder_label = encoder
 
         codecs: dict[int, str] = {}
         channels: dict[int, int] = {}
@@ -102,7 +120,7 @@ class StandardiseAudioPlugin(Plugin):
             if not (needs_codec or needs_cap):
                 continue
 
-            codecs[index] = encoder if target == "aac" else target
+            codecs[index] = encoder
             if output_channels > 0:
                 channels[index] = output_channels
 
@@ -160,7 +178,7 @@ class StandardiseAudioPlugin(Plugin):
     def _resolve_encoder(self, target: str, ctx: PipelineContext) -> tuple[str, str | None]:
         """Return the concrete encoder name and an optional log note."""
         if target != "aac":
-            return target, None
+            return ENCODER_ALIASES.get(target, target), None
 
         preference = str(getattr(self.config, "aac_encoder", "auto") or "auto").lower().strip()
         probe = getattr(ctx.ffmpeg, "has_audio_encoder", None)

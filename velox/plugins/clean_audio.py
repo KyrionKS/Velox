@@ -34,9 +34,9 @@ class CleanAudioPlugin(Plugin):
             )
             return result
 
-        languages = [item.strip() for item in language_input.split(",")]
+        languages = [item.strip().lower() for item in language_input.split(",")]
         commentary = bool(getattr(self.config, "commentary", False))
-        tag_language = str(getattr(self.config, "tag_language", "") or "")
+        tag_language = str(getattr(self.config, "tag_language", "") or "").strip().lower()
         tag_title = bool(getattr(self.config, "tag_title", False))
         default_audio = str(getattr(self.config, "default_audio", "") or "").strip().lower()
 

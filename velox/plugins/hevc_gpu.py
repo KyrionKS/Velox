@@ -60,6 +60,22 @@ GPU_ENCODERS: list[dict[str, Any]] = [
 
 NVENC_ENCODERS = {"hevc_nvenc", "h264_nvenc"}
 
+# Encoder name -> codec it produces.  Used to reject an explicitly configured
+# encoder that does not match ``target_codec`` (e.g. libx264 with target hevc).
+ENCODER_CODECS = {
+    "hevc_nvenc": "hevc",
+    "hevc_amf": "hevc",
+    "hevc_qsv": "hevc",
+    "hevc_videotoolbox": "hevc",
+    "hevc_vaapi": "hevc",
+    "h264_nvenc": "h264",
+    "h264_amf": "h264",
+    "h264_qsv": "h264",
+    "h264_videotoolbox": "h264",
+    "libx265": "hevc",
+    "libx264": "h264",
+}
+
 BITRATE_MODES = {"tier", "size", "quality"}
 
 # Apple Silicon is the home platform: VideoToolbox constant quality (-q:v),
@@ -99,10 +115,11 @@ class HevcGpuPlugin(Plugin):
 
         encoder = self._select_encoder(target_codec, ctx, result)
         if encoder is None:
-            result.error = (
-                "☒ No usable hardware encoder was found and CPU fallback is disabled. "
-                "Enable general CPU fallback or install a GPU/videotoolbox-capable ffmpeg."
-            )
+            if result.error is None:
+                result.error = (
+                    "☒ No usable hardware encoder was found and CPU fallback is disabled. "
+                    "Enable general CPU fallback or install a GPU/videotoolbox-capable ffmpeg."
+                )
             return result
 
         if not media.is_video:
@@ -114,8 +131,11 @@ class HevcGpuPlugin(Plugin):
             result.note(f"☒ Unknown bitrate_mode {mode!r}, falling back to quality.")
             mode = "quality"
 
-        # Constant quality (VideoToolbox -q:v) is only available on Apple
-        # Silicon; fall back to tier mode on anything else.
+        # Constant quality (VideoToolbox -q:v) uses a 1-100 scale where higher
+        # is better.  Every other encoder uses a different scale (NVENC/QSV/
+        # AMF/VAAPI: 0-51 lower is better, x265: CRF 0-51 lower is better), so
+        # the VideoToolbox value cannot be reused there.  Fall back to tier mode
+        # for anything that is not VideoToolbox on Apple Silicon.
         if mode == "quality" and not self._constant_quality_supported(encoder["encoder"], result):
             mode = "tier"
 
@@ -177,21 +197,25 @@ class HevcGpuPlugin(Plugin):
             result.note(f"  maximum = {maximum_bitrate}kbps")
 
         # --------------------------------------------------------- extra args
-        extra: list[str] = []
+        # Stream/mux changes that are also valid for a stream-copy remux.
+        remux_extra: list[str] = []
+        # Options that only make sense while actually re-encoding video.
+        encode_extra: list[str] = []
+        force_conform = bool(getattr(self.config, "force_conform", False))
 
-        if bool(getattr(self.config, "force_conform", False)) and container in CONFORM_SPEC:
+        if force_conform and container in CONFORM_SPEC:
             if container == "mkv":
-                extra += ["-map", "-0:d"]
+                remux_extra += ["-map", "-0:d"]
             for stream in media.streams:
                 codec = str(stream.get("codec_name") or "").lower()
                 if codec in CONFORM_SPEC[container]:
-                    extra += ["-map", f"-0:{stream.get('index')}"]
+                    remux_extra += ["-map", f"-0:{stream.get('index')}"]
 
         tenbit = bool(getattr(self.config, "enable_10bit", False)) or _is_10bit(media.video_stream)
         if tenbit and target_codec == "hevc":
-            extra += ["-profile:v", "main10"]
+            encode_extra += ["-profile:v", "main10"]
             if encoder["encoder"] != "hevc_vaapi":
-                extra += ["-pix_fmt", "p010le"]
+                encode_extra += ["-pix_fmt", "p010le"]
             reason = (
                 "user enabled in config"
                 if getattr(self.config, "enable_10bit", False)
@@ -203,7 +227,7 @@ class HevcGpuPlugin(Plugin):
             bool(getattr(self.config, "bframes_enabled", False))
             and encoder["encoder"] in NVENC_ENCODERS
         ):
-            extra += ["-bf", str(int(getattr(self.config, "bframes_value", 5)))]
+            encode_extra += ["-bf", str(int(getattr(self.config, "bframes_value", 5)))]
 
         # ------------------------------------------------------ stream handling
         sub_idx = 0
@@ -219,17 +243,17 @@ class HevcGpuPlugin(Plugin):
 
             if ctype == "subtitle":
                 if container == "mkv" and cname == "mov_text":
-                    extra += [f"-c:s:{sub_idx}", "srt"]
+                    remux_extra += [f"-c:s:{sub_idx}", "srt"]
                     result.note("☒ Converting mov_text subtitles to srt (mkv target).")
                 elif container == "mp4" and cname == "subrip":
-                    extra += [f"-c:s:{sub_idx}", "mov_text"]
+                    remux_extra += [f"-c:s:{sub_idx}", "mov_text"]
                     result.note("☒ Converting subrip subtitles to mov_text (mp4 target).")
                 sub_idx += 1
                 continue
 
             if ctype == "data":
                 if container == "mkv":
-                    extra += ["-map", f"-0:{stream.get('index')}"]
+                    remux_extra += ["-map", f"-0:{stream.get('index')}"]
                     result.note(
                         f"☒ Removing data stream {stream.get('index')} (mkv does not support it)."
                     )
@@ -239,7 +263,7 @@ class HevcGpuPlugin(Plugin):
                 continue
 
             if cname in IMAGE_CODECS:
-                extra += ["-map", f"-0:{stream.get('index')}"]
+                remux_extra += ["-map", f"-0:{stream.get('index')}"]
                 result.note(
                     f"☑ Removing {cname}:{stream.get('index')} as it interferes with encoding."
                 )
@@ -254,7 +278,15 @@ class HevcGpuPlugin(Plugin):
                     f"☒ File is {target_codec} but not in a {container} container. Remuxing."
                 )
                 result.process_file = True
-                result.output_args = ["-map", "0", "-c", "copy", *extra]
+                result.output_args = ["-map", "0", "-c", "copy", *remux_extra]
+                result.requeue = True
+                return result
+            if force_conform and remux_extra:
+                result.note(
+                    f"☒ File is already {target_codec}, but force_conform requires a remux."
+                )
+                result.process_file = True
+                result.output_args = ["-map", "0", "-c", "copy", *remux_extra]
                 result.requeue = True
                 return result
             result.note(f"☑ File is already {target_codec} and in a {container} container.")
@@ -295,7 +327,8 @@ class HevcGpuPlugin(Plugin):
             output_args += ["-vf", encoder["video_filter"]]
 
         output_args += ["-max_muxing_queue_size", "9999"]
-        output_args += extra
+        output_args += remux_extra
+        output_args += encode_extra
 
         result.input_args = input_args
         result.output_args = output_args
@@ -401,9 +434,19 @@ class HevcGpuPlugin(Plugin):
         return 24.0
 
     def _constant_quality_supported(self, encoder: str, result: PluginResult) -> bool:
-        """VideoToolbox constant quality (-q:v) only works on Apple Silicon."""
+        """Whether ``quality`` mode may use *encoder*'s native quality scale.
+
+        Only VideoToolbox's ``-q:v`` uses the 1-100 "higher is better" scale
+        configured as ``quality``.  The other encoders use a 0-51 "lower is
+        better" scale, so they must use tier mode instead of misinterpreting
+        the value.
+        """
         if encoder not in VIDEOTOOLBOX_ENCODERS:
-            return True
+            result.note(
+                f"ℹ Constant quality is only supported by VideoToolbox; "
+                f"{encoder} uses tier mode instead."
+            )
+            return False
         if platform.system() == "Darwin" and platform.machine() == "arm64":
             return True
         result.note(
@@ -419,21 +462,27 @@ class HevcGpuPlugin(Plugin):
         configured = str(getattr(self.config, "encoder", "auto") or "auto").strip()
 
         # 1) An explicitly configured encoder wins (e.g. hevc_videotoolbox on
-        #    Apple Silicon).  If it is not usable we fall back below.
+        #    Apple Silicon).  If it is not usable, fall back below.
         if configured and configured.lower() != "auto":
+            configured_mismatch = False
             selected = self._probe_encoder(configured, ctx, result)
             if selected is not None:
-                if not selected["encoder"].startswith(target_codec):
+                produced = ENCODER_CODECS.get(selected["encoder"])
+                if produced is not None and produced != target_codec:
                     result.note(
-                        f"ℹ Configured encoder {selected['encoder']} does not match the "
-                        f"target codec {target_codec}, using it anyway."
+                        f"☒ Configured encoder {selected['encoder']} produces {produced}, "
+                        f"not the target codec {target_codec}; falling back to automatic "
+                        "detection."
                     )
-                result.note(f"☑ Using configured encoder: {selected['encoder']}")
-                return selected
-            result.note(
-                f"☒ Configured encoder {configured} is not available, "
-                "falling back to automatic detection."
-            )
+                    configured_mismatch = True
+                else:
+                    result.note(f"☑ Using configured encoder: {selected['encoder']}")
+                    return selected
+            if not configured_mismatch:
+                result.note(
+                    f"☒ Configured encoder {configured} is not available, "
+                    "falling back to automatic detection."
+                )
 
         # 2) Automatic GPU probing in the original plugin's order.
         if bool(getattr(self.config, "try_use_gpu", True)):
@@ -447,7 +496,11 @@ class HevcGpuPlugin(Plugin):
 
         # 3) CPU fallback (Velox extension).
         if bool(getattr(self.config, "allow_cpu_fallback", True)):
-            cpu = "libx265" if target_codec == "hevc" else "libx264"
+            cpu_encoders = {"hevc": "libx265", "h264": "libx264"}
+            cpu = cpu_encoders.get(target_codec)
+            if cpu is None:
+                result.error = f"☒ No CPU encoder is available for target codec {target_codec}."
+                return None
             result.note(f"ℹ Falling back to CPU encoder: {cpu}")
             return {"encoder": cpu, "cpu": True}
         return None

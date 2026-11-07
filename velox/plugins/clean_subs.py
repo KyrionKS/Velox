@@ -29,10 +29,10 @@ class CleanSubsPlugin(Plugin):
             )
             return result
 
-        languages = [item.strip() for item in language_input.split(",")]
+        languages = [item.strip().lower() for item in language_input.split(",")]
         commentary = bool(getattr(self.config, "commentary", False))
         sdh = bool(getattr(self.config, "sdh", True))
-        tag_language = str(getattr(self.config, "tag_language", "") or "")
+        tag_language = str(getattr(self.config, "tag_language", "") or "").strip().lower()
 
         drop: set[int] = set()
         metadata: dict[int, list[tuple[str, str]]] = {}
@@ -53,10 +53,12 @@ class CleanSubsPlugin(Plugin):
                 )
                 continue
 
-            # Commentary / description / SDH removal.
-            if commentary and "title" in tags:
+            # Commentary / description / SDH removal.  The two switches are
+            # independent: removing SDH subtitles must work even when
+            # commentary removal is disabled (and vice versa).
+            if "title" in tags:
                 title = stream_title(stream).lower()
-                if "commentary" in title or "description" in title:
+                if commentary and ("commentary" in title or "description" in title):
                     drop.add(index)
                     result.note(
                         f"☒ Subtitle stream {index} detected as being descriptive, removing."

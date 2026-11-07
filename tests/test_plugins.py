@@ -129,6 +129,16 @@ def test_clean_audio_removes_unwanted_language():
     assert result.remux.drop == {2}  # remove the jpn track
 
 
+def test_clean_audio_language_list_is_case_insensitive():
+    config = VeloxConfig().clean_audio
+    config.language = "ENG,UND"
+    media = make_media([vstream(0), astream(1, lang="eng"), astream(2, lang="jpn")])
+    result = CleanAudioPlugin(config).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    assert result.remux.drop == {2}
+
+
 def test_clean_audio_keeps_und_by_default():
     media = make_media([vstream(0), astream(1, lang="und")])
     plugin = CleanAudioPlugin(VeloxConfig().clean_audio)
@@ -220,6 +230,27 @@ def test_clean_subs_removes_unwanted_language():
     assert result.process_file
     assert result.remux is not None
     assert result.remux.drop == {2}
+
+
+def test_clean_subs_language_list_is_case_insensitive():
+    config = VeloxConfig().clean_subs
+    config.language = "ENG"
+    media = make_media([vstream(0), sstream(1, lang="eng"), sstream(2, lang="deu")])
+    result = CleanSubsPlugin(config).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    assert result.remux.drop == {2}
+
+
+def test_clean_subs_removes_sdh_without_commentary():
+    config = VeloxConfig().clean_subs
+    config.commentary = False
+    config.sdh = True
+    media = make_media([vstream(0), sstream(1, lang="eng", title="English SDH")])
+    result = CleanSubsPlugin(config).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    assert result.remux.drop == {1}
 
 
 def test_clean_subs_removes_sdh_when_enabled():
@@ -347,6 +378,26 @@ def test_standardise_audio_downmixes_for_codecs_with_channel_limits():
     assert result.process_file
     assert result.remux is not None
     assert result.remux.channels == {1: 6}
+
+
+def test_standardise_audio_mp3_target_accepts_existing_mp3_track():
+    # ffprobe reports codec_name="mp3" while the encoder is "libmp3lame".
+    config = VeloxConfig().standardise_audio
+    config.audio_codec = "libmp3lame"
+    media = make_media([vstream(0), astream(1, codec="mp3", channels=2)])
+    result = StandardiseAudioPlugin(config).run(media, make_ctx(media))
+    assert not result.process_file
+
+
+def test_standardise_audio_mp3_target_uses_libmp3lame_encoder():
+    config = VeloxConfig().standardise_audio
+    config.audio_codec = "mp3"
+    media = make_media([vstream(0), astream(1, codec="eac3", channels=6, bitrate=640_000)])
+    result = StandardiseAudioPlugin(config).run(media, make_ctx(media))
+    assert result.process_file
+    assert result.remux is not None
+    assert result.remux.codecs == {1: "libmp3lame"}
+    assert result.remux.channels == {1: 2}
 
 
 def test_standardise_audio_prefers_fdk_aac_when_available():
@@ -601,6 +652,64 @@ def test_hevc_gpu_quality_falls_back_on_non_apple_silicon(monkeypatch):
     assert result.process_file
     assert "-q:v" not in result.output_args
     assert "-b:v" in result.output_args
+
+
+def test_hevc_gpu_quality_falls_back_for_nvenc(monkeypatch):
+    import platform as platform_mod
+
+    monkeypatch.setattr(platform_mod, "system", lambda: "Linux")
+    monkeypatch.setattr(platform_mod, "machine", lambda: "x86_64")
+    config = VeloxConfig().hevc_gpu
+    config.bitrate_mode = "quality"
+    media = _movie()
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"hevc_nvenc"}))
+    assert result.process_file
+    assert "-b:v" in result.output_args
+    if "-cq:v" in result.output_args:
+        # Tier mode may use a fixed NVENC CQ value, but never the
+        # VideoToolbox quality scale (50).
+        assert result.output_args[result.output_args.index("-cq:v") + 1] != "50"
+
+
+def test_hevc_gpu_quality_falls_back_for_cpu(monkeypatch):
+    import platform as platform_mod
+
+    monkeypatch.setattr(platform_mod, "system", lambda: "Linux")
+    monkeypatch.setattr(platform_mod, "machine", lambda: "x86_64")
+    config = VeloxConfig().hevc_gpu
+    config.bitrate_mode = "quality"
+    media = _movie()
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available=set()))
+    assert result.process_file
+    assert "-crf" not in result.output_args
+    assert "-b:v" in result.output_args
+
+
+def test_hevc_gpu_rejects_encoder_that_produces_other_codec():
+    config = VeloxConfig().hevc_gpu
+    config.encoder = "libx264"
+    media = _movie()
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"libx264"}))
+    assert result.process_file
+    # Falls back to the matching CPU encoder instead of producing H.264.
+    assert "libx265" in result.output_args
+    assert "libx264" not in result.output_args
+    assert any("not the target codec" in line for line in result.log)
+
+
+def test_hevc_gpu_force_conform_remuxes_already_target_file():
+    config = VeloxConfig().hevc_gpu
+    config.force_conform = True
+    media = make_media(
+        [
+            vstream(0, codec="hevc"),
+            {"index": 1, "codec_type": "data", "codec_name": "bin_data"},
+        ]
+    )
+    result = HevcGpuPlugin(config).run(media, make_ctx(media, available={"hevc_videotoolbox"}))
+    assert result.process_file
+    assert result.output_args[:5] == ["-map", "0", "-c", "copy", "-map"]
+    assert "-0:d" in result.output_args
 
 
 def test_hevc_gpu_hardware_decode_flag():
