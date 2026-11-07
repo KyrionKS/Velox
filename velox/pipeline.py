@@ -68,6 +68,9 @@ class RunReport:
     original_media: MediaInfo | None = None
     final_media: MediaInfo | None = None
     report_path: Path | None = None
+    # Set when the result was written to ``general.output_dir`` instead of
+    # replacing the source file.
+    output_dir: str | None = None
     kept_original: bool = False
     passes: list[PassEvent] = field(default_factory=list)
     outcomes: list[PluginOutcome] = field(default_factory=list)
@@ -351,8 +354,9 @@ class Pipeline:
                     if problem:
                         raise PluginError(f"Output verification failed: {problem}", "verify")
                 report.final_path = self._commit(current, source)
-                report.kept_original = self.config.general.keep_original
-                if not self.config.general.keep_original:
+                report.output_dir = self.config.general.output_dir or None
+                report.kept_original = bool(report.output_dir) or self.config.general.keep_original
+                if not self.config.general.keep_original and not report.output_dir:
                     self._remove_backup(source)
                 self.log.info("✓ Wrote %s", report.final_path)
             else:
@@ -534,7 +538,7 @@ class Pipeline:
         except VeloxError as exc:
             return str(exc)
 
-        if not media.is_video:
+        if original.is_video and not media.is_video:
             return "no video stream in the output"
 
         if original.duration > 0 and media.duration > 0:
@@ -635,9 +639,7 @@ class Pipeline:
         if general.output_dir:
             out_dir = Path(general.output_dir).expanduser()
             out_dir.mkdir(parents=True, exist_ok=True)
-            target = out_dir / f"{source.stem}.{final_container}"
-            if target.exists():
-                target.unlink()
+            target = self._unique_path(out_dir / f"{source.stem}.{final_container}")
             shutil.move(str(current), str(target))
             return target
 
@@ -649,11 +651,21 @@ class Pipeline:
             self._move(current, source)
             return source
 
-        # 3) Container changed: write a sibling file.
-        target = source.with_suffix(f".{final_container}")
-        if target.exists():
-            target.unlink()
+        # 3) Container changed: write a sibling file.  Never overwrite an
+        # existing file (it may even be another source in the same run).
+        target = self._unique_path(source.with_suffix(f".{final_container}"))
         self._move(current, target)
         if not general.keep_original:
             source.unlink(missing_ok=True)
         return target
+
+    @staticmethod
+    def _unique_path(path: Path) -> Path:
+        """Return *path* or a numbered sibling if it already exists."""
+        if not path.exists():
+            return path
+        for number in range(1, 10_000):
+            candidate = path.with_name(f"{path.stem} ({number}){path.suffix}")
+            if not candidate.exists():
+                return candidate
+        raise VeloxError(f"Could not find a free output name for {path}")

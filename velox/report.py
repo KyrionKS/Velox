@@ -233,6 +233,8 @@ def _result_text(report: Any) -> str:
     if report.error:
         return "Fehler"
     if report.modified:
+        if getattr(report, "output_dir", None):
+            return "neue Datei geschrieben (Original unangetastet)"
         return (
             "ersetzt (Original entfernt)"
             if not _keeps_original(report)
@@ -277,10 +279,11 @@ def build_report(report: Any, config: VeloxConfig) -> str:
     if report.original_bytes and report.final_bytes and report.modified:
         saved = report.original_bytes - report.final_bytes
         percent = saved / report.original_bytes * 100.0
+        sign = "+" if saved < 0 else MINUS
         lines += _heading("GESAMT")
         lines.append(
             f"  {_size(report.original_bytes)} \u2192 {_size(report.final_bytes)}"
-            f"   ({MINUS}{_size(abs(saved))}, {_percent(percent)})"
+            f"   ({sign}{_size(abs(saved))}, {_percent(percent)})"
         )
         lines.append("")
         lines += _settings_block(config)
