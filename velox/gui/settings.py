@@ -3,7 +3,7 @@ Advanced) with one scrollable page per section."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -272,6 +272,8 @@ class SettingsPanel(QWidget):
         form.addRow("Target size", self.target_size)
         self._vform = form
         self.mode.currentIndexChanged.connect(self._update_mode_visibility)
+        self.preset.currentIndexChanged.connect(self._on_preset_changed)
+        self.bpp.valueChanged.connect(self._on_bpp_changed)
         return self._group("Quality && size", form)
 
     def _encoder_group(self) -> QGroupBox:
@@ -331,6 +333,10 @@ class SettingsPanel(QWidget):
             "left untouched. Re-encoding lossy audio again only adds\n"
             "generation loss."
         )
+        self.audio_commentary = QCheckBox("Remove commentary / description audio tracks")
+        self.audio_commentary.setToolTip(
+            "Drops audio tracks whose title contains 'commentary' or 'description'."
+        )
         self.default_audio = QComboBox()
         self.default_audio.setEditable(True)
         for label in DEFAULT_AUDIO_PRESETS:
@@ -345,6 +351,7 @@ class SettingsPanel(QWidget):
         form.addRow("Min. per channel", self.audio_min_per_ch)
         form.addRow("AAC encoder", self.aac_encoder)
         form.addRow("", self.reencode_target)
+        form.addRow("", self.audio_commentary)
         form.addRow("Default track", self.default_audio)
         self._aform = form
         self.audio_cap.valueChanged.connect(self._update_audio_visibility)
@@ -357,7 +364,7 @@ class SettingsPanel(QWidget):
         self.sub_langs = QLineEdit("eng")
         self.sub_langs.setToolTip("Subtitle languages to keep, comma separated.")
         self.sub_sdh = QCheckBox("Remove SDH / hard-of-hearing subtitles")
-        self.commentary = QCheckBox("Remove commentary / description tracks")
+        self.commentary = QCheckBox("Remove commentary / description subtitles")
         form.addRow("Keep languages", self.sub_langs)
         form.addRow("", self.sub_sdh)
         form.addRow("", self.commentary)
@@ -479,6 +486,24 @@ class SettingsPanel(QWidget):
         self._vform.setRowVisible(self.bpp, tier)
         self._vform.setRowVisible(self.target_size, mode == "size")
 
+    def _on_preset_changed(self) -> None:
+        preset = self.preset.currentData()
+        if preset == "custom":
+            return
+        value = QUALITY_PRESETS.get(preset)
+        if value is not None:
+            with QSignalBlocker(self.bpp):
+                self.bpp.setValue(value)
+
+    def _on_bpp_changed(self, value: float) -> None:
+        name = preset_for_bpp(value)
+        if name == self.preset.currentData():
+            return
+        index = self.preset.findData(name)
+        if index >= 0:
+            with QSignalBlocker(self.preset):
+                self.preset.setCurrentIndex(index)
+
     def _update_audio_visibility(self) -> None:
         # The per-channel floor only matters when a cap is set; the encoder
         # choice only matters for AAC.
@@ -526,7 +551,8 @@ class SettingsPanel(QWidget):
 
         self.sub_langs.setText(subs.language)
         self.sub_sdh.setChecked(subs.sdh)
-        self.commentary.setChecked(audio.commentary or subs.commentary)
+        self.commentary.setChecked(subs.commentary)
+        self.audio_commentary.setChecked(audio.commentary)
 
         self._set_combo_data(self.encoder, g.encoder)
         self._set_combo_text(self.container, g.container)
@@ -582,7 +608,7 @@ class SettingsPanel(QWidget):
 
         config.clean_subs.language = self.sub_langs.text().strip() or "eng"
         config.clean_subs.sdh = self.sub_sdh.isChecked()
-        config.clean_audio.commentary = self.commentary.isChecked()
+        config.clean_audio.commentary = self.audio_commentary.isChecked()
         config.clean_subs.commentary = self.commentary.isChecked()
 
         g.encoder = self.encoder.currentData()

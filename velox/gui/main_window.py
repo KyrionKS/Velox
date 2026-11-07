@@ -1,6 +1,6 @@
 """The Velox main window (macOS-oriented layout).
 
-* a toolbar holds the actions (Add files/folder, Start, Dry run, Stop);
+* a toolbar holds the actions (Add files/folder, Start, Stop);
 * a source-list **sidebar** switches between Files / Settings / Results;
 * the Files page is a table with **one row per file** (progress, current step,
   result) so several files can be processed at the same time;
@@ -100,11 +100,19 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Velox")
         self.setMinimumSize(860, 580)
         self.resize(1080, 740)
-        self.config: VeloxConfig = load_user_config()
+        self._config_load_error: str | None = None
+        try:
+            self.config: VeloxConfig = load_user_config()
+        except (OSError, ValueError, TypeError) as exc:
+            # A broken/unreadable config must not prevent the app from
+            # starting; fall back to defaults and report the problem.
+            self.config = VeloxConfig()
+            self._config_load_error = str(exc)
         self._worker: PipelineWorker | None = None
         self._files_total = 0
         self._files_done = 0
         self._run_started_at: float | None = None
+        self._run_had_error = False
         self._log_visible = False
         self._qsettings = QSettings("Velox", "Velox")
 
@@ -123,6 +131,8 @@ class MainWindow(QMainWindow):
 
         self._build()
         self.settings.load_from_config(self.config)
+        if self._config_load_error:
+            self._log(f"✗ Could not load settings: {self._config_load_error}")
         self._restore_geometry()
         self._check_ffmpeg()
 
@@ -522,6 +532,7 @@ class MainWindow(QMainWindow):
         self._status_text = {}
         self._active = set()
         self._run_started_at = time.monotonic()
+        self._run_had_error = False
         self.overall_bar.setRange(0, 1000)
         self.overall_bar.setValue(0)
         self.status_label.setText("Starting…")
@@ -688,8 +699,14 @@ class MainWindow(QMainWindow):
             self._set_result(path, "skipped")
             self._log(f"⏭ {Path(path).name}: skipped ({report.reason})")
         elif report.modified:
+            saved = report.saved_bytes
+            sign = "−" if saved >= 0 else "+"
             self._set_step(path, "Done")
-            self._set_result(path, f"−{fmt_bytes(report.saved_bytes)}", "#2e7d32")
+            self._set_result(
+                path,
+                f"{sign}{fmt_bytes(abs(saved))}",
+                "#2e7d32" if saved >= 0 else "#c62828",
+            )
             self._log(
                 f"✓ {Path(path).name}: {fmt_bytes(report.original_bytes)} → "
                 f"{fmt_bytes(report.final_bytes)} (saved {fmt_bytes(report.saved_bytes)}, "
@@ -702,6 +719,7 @@ class MainWindow(QMainWindow):
         self._update_status_line()
 
     def _on_failed(self, message: str) -> None:
+        self._run_had_error = True
         self._log(f"✗ {message}")
 
     def _on_run_finished(self, reports) -> None:
@@ -709,12 +727,19 @@ class MainWindow(QMainWindow):
         self._elapsed_timer.stop()
         self._run_started_at = None
         failed = [r for r in reports if not r.ok and not r.cancelled]
-        self.status_label.setText(
-            "Finished." if not failed else f"Finished with {len(failed)} error(s)."
-        )
+        if self._run_had_error:
+            # A fatal worker error (e.g. ffmpeg missing) never produces a
+            # RunReport, so do not pretend the run finished successfully.
+            self.status_label.setText("Finished with an error — see log.")
+            self.overall_bar.setRange(0, 1000)
+            self.overall_bar.setValue(int(self._overall_fraction() * 1000))
+        else:
+            self.status_label.setText(
+                "Finished." if not failed else f"Finished with {len(failed)} error(s)."
+            )
+            self.overall_bar.setRange(0, 1000)
+            self.overall_bar.setValue(1000)
         self.count_label.setText(f"{self._files_done} of {self._files_total}")
-        self.overall_bar.setRange(0, 1000)
-        self.overall_bar.setValue(1000)
         self._log(f"Done. {len(reports)} file(s), {len(failed)} failed.")
         self.results._update_summary()
         QTimer.singleShot(0, self._release_worker)

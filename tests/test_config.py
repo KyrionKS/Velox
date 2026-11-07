@@ -92,3 +92,25 @@ def test_unknown_key_is_ignored(tmp_path: Path):
     )
     loaded = load_config(path)
     assert loaded.general.keep_original is False
+
+
+def test_non_dataclass_plugin_section_is_ignored(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "[plugins.order]\nfoo = 1\n",
+        encoding="utf-8",
+    )
+    loaded = load_config(path)
+    assert loaded.order  # defaults are used, no crash
+
+
+def test_invalid_toml_raises_clear_value_error(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text("[general\nkeep_original = false\n", encoding="utf-8")
+
+    try:
+        load_config(path)
+    except ValueError as exc:
+        assert "Invalid config file" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected ValueError")

@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_config(args.config) if args.config else VeloxConfig()
-    except (OSError, RuntimeError) as exc:
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
         log.error("Could not load config: %s", exc)
         return 2
 

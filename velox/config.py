@@ -297,8 +297,10 @@ def load_config(path: str | Path | None = None) -> VeloxConfig:
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
 
-    data = _toml_to_dict(path)
-
+    try:
+        data = _toml_to_dict(path)
+    except ValueError as exc:
+        raise ValueError(f"Invalid config file {path}: {exc}") from exc
     if "general" in data:
         _apply_section(config.general, data["general"], "general")
 
@@ -313,10 +315,15 @@ def load_config(path: str | Path | None = None) -> VeloxConfig:
         for key, section in plugins.items():
             if not isinstance(section, dict):
                 continue
-            if not hasattr(config, key) or key == "general":
+            value = getattr(config, key, None)
+            if (
+                not hasattr(config, key)
+                or key == "general"
+                or not isinstance(value, PluginConfigBase)
+            ):
                 log.warning("Ignoring unknown plugin section [plugins.%s]", key)
                 continue
-            _apply_section(getattr(config, key), section, f"plugins.{key}")
+            _apply_section(value, section, f"plugins.{key}")
 
     return config
 

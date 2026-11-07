@@ -65,12 +65,39 @@ def test_settings_default_audio_presets(qapp):
         assert panel.apply_to(VeloxConfig()).clean_audio.default_audio == value
 
 
-def test_settings_commentary_applies_to_both(qapp):
+def test_settings_commentary_applies_separately(qapp):
     panel = SettingsPanel()
-    panel.commentary.setChecked(True)
+    panel.audio_commentary.setChecked(True)
+    panel.commentary.setChecked(False)
     result = panel.apply_to(VeloxConfig())
     assert result.clean_audio.commentary is True
-    assert result.clean_subs.commentary is True
+    assert result.clean_subs.commentary is False
+
+
+def test_settings_does_not_conflate_commentary_on_load(qapp):
+    config = VeloxConfig()
+    config.clean_audio.commentary = False
+    config.clean_subs.commentary = True
+    panel = SettingsPanel()
+    panel.load_from_config(config)
+    assert panel.audio_commentary.isChecked() is False
+    assert panel.commentary.isChecked() is True
+
+
+def test_settings_bpp_edit_switches_preset_to_custom(qapp):
+    panel = SettingsPanel()
+    panel.load_from_config(VeloxConfig())
+    panel.bpp.setValue(0.09)
+    assert panel.preset.currentData() == "custom"
+    assert panel.apply_to(VeloxConfig()).hevc_gpu.bits_per_pixel == pytest.approx(0.09)
+
+
+def test_settings_preset_updates_bpp(qapp):
+    panel = SettingsPanel()
+    panel.load_from_config(VeloxConfig())
+    panel.preset.setCurrentIndex(panel.preset.findData("high"))
+    assert panel.bpp.value() == pytest.approx(0.045)
+    assert panel.apply_to(VeloxConfig()).hevc_gpu.bits_per_pixel == pytest.approx(0.045)
 
 
 def test_results_panel_collects_rows(qapp):
@@ -231,3 +258,24 @@ def test_status_line_aggregates_parallel_files(qapp, tmp_path, monkeypatch):
         RunReport(source=Path(b), final_path=Path(b), original_bytes=1, final_bytes=1)
     )
     assert "A.mkv" in window.status_label.text()
+
+
+def test_fatal_worker_error_is_not_reported_as_finished(qapp, tmp_path, monkeypatch):
+    import velox.gui.main_window as mw
+    from velox.gui.main_window import MainWindow
+
+    config = VeloxConfig()
+    monkeypatch.setattr(mw, "load_user_config", lambda: config)
+    monkeypatch.setattr(mw, "user_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setattr(MainWindow, "_check_ffmpeg", lambda self: None)
+
+    window = MainWindow()
+    window._files_total = 2
+    window._progress = {"/tmp/A.mkv": 0.5, "/tmp/B.mkv": 0.0}
+    window.overall_bar.setRange(0, 1000)
+
+    window._on_failed("ffmpeg not found")
+    window._on_run_finished([])
+
+    assert "error" in window.status_label.text().lower()
+    assert window.overall_bar.value() < 1000
