@@ -26,3 +26,10 @@ htmlcov/
 
 # Local config
 config.toml
+
+# Rust / Tauri
+target/
+src-tauri/target/
+src-tauri/gen/
+node_modules/
+*.log

@@ -1,10 +1,17 @@
 # Velox
 
-Velox cleans up and transcodes video files with `ffmpeg` — remux/stream-copy,
-audio & subtitle cleanup, audio standardisation, video encoding and a size
-check. Runs on macOS (Apple Silicon optimized) and Linux/Windows.
+Velox cleans up and transcodes video files with `ffmpeg`. It remuxes streams,
+cleans audio and subtitle tracks, standardises audio, encodes video (hardware
+where available) and verifies the result — with a desktop app built in Rust,
+Tauri 2 and Svelte 5.
 
-The pipeline runs an ordered set of **steps**, each with a clear name:
+This repository is the Rust rewrite of the original Python/PySide6 version.
+The Python implementation remains on the `main` branch until the rewrite is
+merged; the historical release is tagged `python-final`.
+
+## What it does
+
+The pipeline runs an ordered set of **steps**:
 
 | Order | Key                   | Step                     | What it does                                             |
 | ----: | --------------------- | ------------------------ | -------------------------------------------------------- |
@@ -14,271 +21,113 @@ The pipeline runs an ordered set of **steps**, each with a clear name:
 | 4     | `standardise_audio`   | Standardise Audio Codec  | Transcodes audio to one codec (keeps bitrate/channels)    |
 | 5     | `hevc_gpu`            | Encode Video             | Encodes the video (hardware encoder when available)       |
 | 6     | `reorder_all_streams` | Order Streams            | Sorts streams by codec/channels/language/type             |
-| 7     | `file_size_check`     | Check File Size          | Errors if the result is outside the configured size bounds|
+| 7     | `file_size_check`     | Check File Size          | Errors if the result is outside the configured bounds     |
 
-## What it does
+Consecutive stream-copy steps are merged into a **single ffmpeg pass**, so a
+typical file is read and written twice at most (one merged remux and one
+transcode). Only the encode step re-encodes.
 
-1. **Move Video First** – ensures the video stream leads (needed so later
-   tools detect the codec correctly).
-2. **Clean Audio Tracks** – keeps only the configured audio languages,
-   optionally drops commentary/description tracks and tags untagged tracks.
-3. **Clean Subtitle Tracks** – keeps only the configured subtitle languages,
-   optionally drops commentary/SDH tracks and tags untagged tracks.
-4. **Standardise Audio Codec** – transcodes every audio track that is not in
-   the target codec (keeping bitrate/channels).
-5. **Encode Video** – encodes the video to the target codec, using a hardware
-   encoder when available (on macOS: `hevc_videotoolbox`), otherwise optionally
-   CPU.
-6. **Order Streams** – sorts streams by codec/channels/language/type.
-7. **Check File Size** – errors if the result is outside the configured size
-   bounds relative to the original.
+All work happens in a scratch directory. The original is only replaced after
+the whole pipeline succeeded and the output was verified (parses, has video,
+duration matches). Set `verify_full_decode` to decode the whole output as well.
 
-All the stream-copy steps (1, 2, 3, 4 and 6) are **merged into a single
-`ffmpeg` pass**, so a file is read and written as few times as possible. Only
-step 5 re-encodes and needs its own pass. The original file is only touched
-once the whole pipeline succeeded.
+## Desktop app
+
+The app is built around a task-first layout rather than a settings dialog:
+
+- **Library** — the queue and a **Run** panel. Pick a quality preset
+  (Auto · Compact · Balanced · Archive), see the plan and estimated output
+  size, then start. Files show codec/resolution chips, live progress and the
+  space saved.
+- **Activity** — live log, one row per ffmpeg pass, and the total saving.
+- **Settings** — a slide-over sheet with Video, Audio, Tracks, Output and
+  Advanced sections, including encoder detection and tool paths.
+
+Keyboard shortcuts: `⌘O` add files, `⌘⇧O` add a folder, `⌘R` start,
+`⌘,` settings, `⌘1` library, `⌘2` activity, `Esc` close settings.
 
 ## Requirements
 
-- Python 3.11+
+- Rust 1.82+
+- Node.js 20+
 - `ffmpeg` / `ffprobe` in your `PATH` (`brew install ffmpeg` on macOS)
+- macOS 11+ for the desktop app; Linux and Windows builds are supported
 
-## Install
+Velox also looks in `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`
+and `/usr/bin` when `PATH` is minimal (for example when launched from Finder).
+The paths can be changed in *Settings → Advanced → Tools*.
 
-```bash
-cd Velox
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-```
-
-Or run it directly without installing:
+## Build
 
 ```bash
-python3 -m velox --help
+npm install
+npm run tauri dev      # development app
+npm run tauri build    # release bundle (.app/.dmg, AppImage/deb, .msi)
 ```
 
-## Usage
+Frontend-only preview (no Tauri backend): `npm run dev` and open
+`http://localhost:1420/?demo` for the built-in demo queue.
+
+CLI:
 
 ```bash
-# Preview what would happen (no files written)
-python3 -m velox -n "/path/to/Movie.mkv"
-
-# Process a single file (uses built-in defaults)
-python3 -m velox "/path/to/Movie.mkv"
-
-# Process a whole folder recursively with a config
-python3 -m velox -r -c config.toml "/path/to/library"
-
-# Inspect the streams of a file
-python3 -m velox --info "/path/to/Movie.mkv"
-
-# Run only some plugins
-python3 -m velox --skip hevc_gpu "/path/to/Movie.mkv"
-
-# Write results elsewhere, leave originals untouched
-python3 -m velox --output-dir ./out "/path/to/Movie.mkv"
-
-# Create a config file to edit
-python3 -m velox --init-config config.toml
+cargo run -p velox-cli -- --info "/path/to/Movie.mkv"
+cargo run -p velox-cli -- -n "/path/to/Movie.mkv"   # dry run
+cargo run -p velox-cli -- -r -c config.toml "/media"
+cargo install --path crates/velox-cli
 ```
 
-### Safety & disk space
+## CLI
 
-Velox processes everything in a scratch folder and only touches the original
-once the whole pipeline succeeded. Before replacing the original it **verifies
-the output** (parses, has a video stream, same duration); if the check fails the
-original is kept. Set `verify_full_decode = true` to also decode the whole
-output and catch corrupt frames (slower).
-
-By default the original is then **replaced and the backup removed**, so after a
-successful encode only the new (smaller) file remains — no leftovers. Use
-`--keep-original` to keep a `.velox-orig` copy, or `--output-dir DIR` to leave
-the originals untouched entirely.
-
-### Report
-
-For every file that is changed (or fails) Velox can write a short, human
-readable report next to it: `<name>-report.txt`. It lists the state before, the
-individual passes with their savings and concrete changes (e.g. "audio track #2
-removed"), the state after, the total saving and the settings used — and, when
-something went wrong, the error. Enabled by default (`write_report`); disable it
-with `--no-report` or the checkbox under *Settings → Output*.
-
-## Desktop app (PySide6)
-
-A native macOS window built around a **sidebar** (Files · Settings · Results)
-with the actions in a toolbar, following the current macOS layout conventions:
-the toolbar is unified with the title bar, the controls use the native system
-appearance (accent colour, dark mode, Liquid Glass), and the app menu has
-**Settings… (⌘,)** and **About Velox**. An app icon ships in `assets/`.
-
-- **Toolbar** — Add Files / Add Folder, and Start / Stop.
-- **Files** — a table with **one row per file** (progress, current step, result).
-  Several files are processed **in parallel** (`Parallel files`, default 2).
-- **Settings** — a sub-sidebar (**Video · Audio · Subtitles · Output ·
-  Advanced**) with one scrollable, left-aligned page per section: quality/size,
-  encoder & container, audio (incl. default track), subtitles, output & safety,
-  and advanced limits / performance / per-step toggles / tools.
-- **Results** — one row per ffmpeg pass with the space it saved, plus a total.
-
-The always-visible status strip shows the current file (x of y), the running
-step with percentage and an estimated time left, and an overall bar, with a
-collapsible *Details* log. *Stop* cancels safely (the original is never left
-half-processed). For a preview without writing anything, use the CLI with
-`-n`/`--dry-run`. The window size is
-remembered, and settings live in
-`~/Library/Application Support/Velox/config.toml`.
-
-### Installing / starting on macOS
-
-```bash
-# one-time: creates .venv and installs Velox + PySide6
-./setup.command                 # double-click in Finder
-
-# start the app
-./Velox.command                 # double-click in Finder
-
-# optional: build Velox.app for a real double-clickable app (no Terminal)
-./make_app.command
-```
-
-If you launch from the Finder, macOS does not provide your shell `PATH`, so
-Velox also looks in `/opt/homebrew/bin`, `/usr/local/bin` and `/usr/bin` for
-ffmpeg, and can locate it for you from the app if needed.
-
-Prefer no GUI? The CLI is unchanged: `velox --help`.
+The CLI keeps the original flags: `-c/--config`, `-r/--recursive`,
+`-n/--dry-run`, `--info`, `--ext`, `--output-dir`, `--temp-dir`,
+`--keep-original`, `--no-backup`, `--only`, `--skip`, `--mode`,
+`--target-size-mb`, `--bpp`, `-j/--jobs`, `--report`/`--no-report`,
+`--ffmpeg`, `--ffprobe`, `--init-config`, `--list-plugins`, `-v`, `-q`.
 
 ## Configuration
 
-See `config.example.toml` for the recommended Apple Silicon setup and every
-option with comments. Key settings:
+The TOML format is compatible with the Python version, including the per-user
+path (`~/Library/Application Support/Velox/config.toml` on macOS,
+`~/.config/velox/config.toml` elsewhere). See `config.example.toml` for all
+options.
 
-- `clean_audio.language = "eng,und"`
-- `general.concurrency = 2` — how many files are processed at the same time
-  (`--jobs N` on the CLI; 1 = sequential). On Apple Silicon 2 is a good default;
-  the VideoToolbox engine serialises beyond a few concurrent transcodes.
-- `clean_audio.default_audio = "eng"` — which kept audio track becomes the
-  container/player default (`""` = unchanged, `"first"`, `"best"`, or a
-  language code)
-- `standardise_audio.audio_codec = "aac"`, `audio_bitrate_kbps = 0`
-  (keep the original bitrate — a cap only loses quality)
-- `hevc_gpu.encoder = "hevc_videotoolbox"` (Apple Silicon)
-- `hevc_gpu.bitrate_mode = "quality"`, `quality = 50` (VideoToolbox `-q:v`, 1-100)
-- `hevc_gpu.hardware_decode = true` (VideoToolbox decode)
+Key settings:
 
-### Audio
-
-`standardise_audio` re-encodes non-target audio tracks (AC-3, E-AC-3, DTS, …)
-to AAC. Two settings matter:
-
-- **Channel layout.** AC-3/E-AC-3/DTS decode as `5.1(side)`. Without an explicit
-  `-ac 6` FFmpeg writes a non-standard PCE layout (no LFE) that many players
-  mis-handle — dialogue and effects come out of the wrong speakers. Velox now
-  always passes the source channel count, clamped to what the target codec
-  supports (AAC 8, AC-3/E-AC-3 6, MP3 2). Files that were damaged by older
-  versions are detected (AAC, >2 channels, no channel layout) and repaired on
-  the next run.
-- **Bitrate.** The default `audio_bitrate_kbps = 0` keeps the source bitrate.
-  Setting a cap is opt-in. If you do set one,
-  `audio_bitrate_min_per_channel_kbps = 128` raises it for surround tracks so
-  5.1/7.1 keeps enough bits (a flat 256k cap for 5.1 is only ~43k/channel).
-  Tracks that already use the target codec are never re-encoded just to lower
-  their bitrate unless `reencode_target_codec = true` — repeated lossy encoding
-  only adds generation loss.
-
-`aac_encoder = "auto"` uses `libfdk_aac` when the installed ffmpeg provides it
-(better at low bitrates) and otherwise falls back to the native FFmpeg encoder.
-On Homebrew ffmpeg builds `libfdk_aac` is often not included, so the fallback is
-the normal case.
-
-### Choosing the size/quality mode
-
-The default is **constant quality** via VideoToolbox `-q:v` (Apple Silicon only;
-Velox falls back to tier mode elsewhere). It is the encoder's native quality
-control and gives the best quality per byte — the file size adapts to the
-content, so it works equally for a feature film and a short episode.
-
-- `-q:v` scale is **1–100, higher is better** (there is no `-crf`/`-cq` in
-  VideoToolbox). Recommended range **45–65**; 55–65 is "excellent"
-  (VMAF ~95–98), 45–50 "good" (VMAF ~90–93). The default `50` favours small
-  files. A resolution-aware `-maxrate` ceiling keeps complex scenes in check.
-- Speed is essentially unaffected by `-q:v` (hardware encoding) — the real
-  trade-off is quality vs. file size.
-
-The alternatives:
-
-- `bitrate_mode = "tier"` — resolution & framerate aware ABR
-  (`bits_per_pixel * width * height * fps`), i.e. a **predictable size** that
-  scales for movies and episodes:
-
-  | Content (bpp 0.033)    | Bitrate   | Result |
-  | ---------------------- | --------- | ------ |
-  | 1080p24 feature (2 h)  | ~1.6 Mbps | ~1.5 GB |
-  | 1080p24 episode (45 m) | ~1.6 Mbps | ~0.6 GB |
-  | 2160p24 feature (2 h)  | ~6.6 Mbps | ~5.9 GB |
-
-- `bitrate_mode = "size"` with `target_size_mb = 1500` — fixed size per file.
-  Override per run with `--target-size-mb 1500` (or `--mode size`).
-
-Velox never encodes above the source bitrate, so already-small files are not
-bloated, and the `file_size_check` step guards against surprises
-(`upper_bound`, plus optional `min_size_mb`/`max_size_mb`).
-
-### Apple Silicon
-
-Velox is tuned for Apple Silicon: `hevc_videotoolbox` (hardware encode),
-optional hardware decode, Main10 (10-bit), spatial AQ, and the Apple-only
-constant-quality mode are all enabled by default. The encoder-quality flags
-live in `velox/plugins/hevc_gpu.py` (`HevcGpuPlugin._video_encode_args`).
-
-### NAS / external drives (no SSD wear)
-
-By default all temporary data is written **next to the source file**, i.e. on
-the same volume — when your media lives on a NAS, the scratch files and the
-intermediate remuxes stay on the NAS and never touch the Mac's SSD. Because the
-final step is then a plain rename on the same volume, it costs no extra copy.
-The scratch directory is printed at the start of each file:
-
-```
-Scratch directory: /Volumes/media/Movies/.velox-1a2b3c
-```
-
-- Default: `temp_dir = "source"` (same folder as each file).
-- Point it somewhere specific (e.g. a NAS scratch share):
-  `temp_dir = "/Volumes/scratch/velox"` or `temp_dir = "{source_dir}/.velox"`.
-  Override per run with `--temp-dir`.
-- If the scratch directory ends up on a *different* volume than the file, Velox
-  warns and falls back to copy+delete for the final move (so it still works, it
-  is just slower).
-
-`--output-dir` is the only mode that writes elsewhere by design.
-
-> Note: the stream-copy steps are merged into a single pass, so a typical file
-> is read/written twice at most (one merged remux + one transcode); if no
-> transcode is needed it is a single pass. Only the transcode step re-encodes.
+- `hevc_gpu.bitrate_mode = "quality"` — constant quality (VideoToolbox
+  `-q:v` on Apple Silicon); falls back to tier mode elsewhere.
+- `hevc_gpu.bits_per_pixel` — tier mode: 0.028 compact, 0.033 balanced,
+  0.045 archive.
+- `standardise_audio.audio_bitrate_kbps = 0` — keep the source bitrate.
+- `general.concurrency = 2` — files processed in parallel.
+- `general.temp_dir = "source"` — scratch files stay on the source volume.
 
 ## Project layout
 
 ```
 Velox/
-├── setup.command / Velox.command / make_app.command   # macOS launchers
+├── Cargo.toml                  # workspace
+├── crates/
+│   ├── velox-core/             # config, probe, pipeline, plugins, report
+│   └── velox-cli/              # clap CLI
+├── src-tauri/                  # Tauri commands, state and native menu
+├── src/                        # Svelte 5 UI
 ├── config.example.toml
-├── pyproject.toml
-├── velox/
-│   ├── cli.py            # argparse entry point
-│   ├── config.py         # typed config + TOML load/save
-│   ├── events.py         # progress/event layer (shared by CLI + GUI)
-│   ├── ffmpeg.py         # ffmpeg/ffprobe wrappers, progress + encoder probing
-│   ├── media.py          # ffprobe data model
-│   ├── pipeline.py       # engine (runs plugins, merges remuxes, commits)
-│   ├── plugins/          # one module per ported plugin
-│   └── gui/              # PySide6 desktop app
-│       ├── app.py, main_window.py
-│       ├── settings.py, results.py, worker.py, presets.py
-└── tests/
+└── assets/icon.png
 ```
 
-## Roadmap
+`velox-core` has no Tauri dependency. ffmpeg is spawned through a
+`FfmpegBackend` trait, and pipeline events are emitted through `EventSink`, so
+the same engine powers the CLI, the desktop app and tests.
 
-- Watch-folder mode (process new files automatically).
-- Fully standalone `.app` bundle (PyInstaller/py2app) including ffmpeg.
+## Tests
+
+```bash
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+npm run check
+```
+
+The core tests cover the ported plugin behaviour, remux argument generation,
+configuration compatibility and the pipeline engine. The CLI and Tauri
+backend are exercised against generated ffmpeg samples during development.

@@ -1,0 +1,19 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Velox",
+        "width": 1080,
+        "height": 740,
+        "minWidth": 860,
+        "minHeight": 580,
+        "resizable": true,
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "decorations": true
+      }
+    ]
+  }
+}
