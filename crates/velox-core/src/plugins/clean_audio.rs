@@ -24,10 +24,13 @@ impl CleanAudioPlugin {
             return kept.first().map(|stream| stream.index);
         }
         if preference == "best" {
-            return kept
-                .iter()
-                .max_by_key(|stream| stream.channels.unwrap_or(0))
-                .map(|stream| stream.index);
+            let mut best = kept.first()?;
+            for stream in kept.iter().skip(1) {
+                if stream.channels.unwrap_or(0) > best.channels.unwrap_or(0) {
+                    best = stream;
+                }
+            }
+            return Some(best.index);
         }
         kept.iter()
             .find(|stream| {

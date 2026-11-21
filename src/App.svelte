@@ -36,7 +36,11 @@
   const estimate = $derived(config ? estimateOutput(run.files, config) : null);
 
   onMount(() => {
-    platform = /Mac/i.test(navigator.userAgent) ? "macos" : "other";
+    platform = /Mac/i.test(navigator.userAgent)
+      ? "macos"
+      : /Linux/i.test(navigator.userAgent)
+        ? "linux"
+        : "windows";
     document.documentElement.dataset.platform = platform;
 
     let unlistenDrop: (() => void) | undefined;
@@ -252,7 +256,7 @@
       <button class="icon-button" onclick={() => (settingsOpen = true)} title="Settings (⌘,)">
         <Settings2 size={17} />
       </button>
-      {#if !isDemo && platform !== "macos"}
+      {#if !isDemo && platform === "linux"}
         <div class="window-controls">
           <button onclick={() => getCurrentWindow().minimize()} title="Minimize"><Minus size={14} /></button>
           <button onclick={() => getCurrentWindow().toggleMaximize()} title="Maximize"><Square size={11} /></button>

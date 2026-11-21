@@ -149,7 +149,10 @@
           <span class="estimate-value qualitative">Disabled</span>
         </div>
         <p class="estimate-note">
-          Enable “Encode Video” under Settings → Advanced → Pipeline steps to re-encode this queue.
+          “Encode Video” is disabled. You can still clean up tracks and remux.
+          <button class="enable-link" onclick={() => (config.plugins.hevc_gpu.enabled = true)}>
+            Enable encoding
+          </button>
         </p>
       {:else if estimate && estimate.counted > 0}
         <div class="estimate-head">
@@ -473,6 +476,19 @@
   .estimate-foot .save {
     color: var(--green);
     font-weight: 600;
+  }
+
+  .enable-link {
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent-text);
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: default;
   }
 
   .estimate-note {

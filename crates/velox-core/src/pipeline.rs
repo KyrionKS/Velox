@@ -383,7 +383,10 @@ impl Pipeline {
             PathBuf::from(value)
         };
         std::fs::create_dir_all(&parent)?;
-        TempDir::new_in(&parent).map_err(VeloxError::Io)
+        tempfile::Builder::new()
+            .prefix(".velox-")
+            .tempdir_in(&parent)
+            .map_err(VeloxError::Io)
     }
 
     fn expected_video_codec(&self, report: &RunReport) -> Option<String> {
