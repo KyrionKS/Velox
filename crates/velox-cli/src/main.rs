@@ -1,6 +1,7 @@
 //! Velox command line interface.
 
 use std::collections::HashSet;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -211,10 +212,6 @@ async fn run(args: Args) -> u8 {
         });
 
     let files = gather_files(&args.paths, args.recursive, &extensions);
-    if files.is_empty() {
-        tracing::warn!("No matching files found.");
-        return 1;
-    }
 
     let ffmpeg = match Ffmpeg::resolve(&config.general.ffmpeg_path, &config.general.ffprobe_path) {
         Ok(ffmpeg) => Arc::new(ffmpeg),
@@ -240,6 +237,11 @@ async fn run(args: Args) -> u8 {
             }
         }
         return code;
+    }
+
+    if files.is_empty() {
+        tracing::warn!("No matching files found.");
+        return 1;
     }
 
     let pipeline = Arc::new(Pipeline::new(config.clone(), ffmpeg));
@@ -359,6 +361,7 @@ fn setup_logging(args: &Args) {
         .with_max_level(level)
         .with_target(false)
         .without_time()
+        .with_ansi(std::io::stderr().is_terminal())
         .with_writer(std::io::stderr)
         .try_init();
 }

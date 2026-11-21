@@ -163,7 +163,8 @@ impl HevcGpuPlugin {
         let (width, height) = self.video_dimensions(media);
         let fps = self.fps(media);
         let bpp = self.config.bits_per_pixel;
-        let video_kbps = (bpp * width as f64 * height as f64 * fps / 1000.0).round() as u32;
+        let video_kbps =
+            (bpp * width as f64 * height as f64 * fps / 1000.0).round_ties_even() as u32;
         let clamped = self.clamp(video_kbps);
         result.note(format!(
             "Tier mode: {bpp} bpp x {width}x{height}@{fps}fps -> {video_kbps}k{}",
@@ -187,7 +188,7 @@ impl HevcGpuPlugin {
         let total_kbps = (target_mb * 1024.0 * 1024.0 * 8.0) / duration / 1000.0;
         let usable_kbps = total_kbps * (1.0 - overhead / 100.0);
         let audio_kbps = self.audio_budget_kbps(media);
-        let video_kbps = (usable_kbps - audio_kbps as f64).round() as u32;
+        let video_kbps = (usable_kbps - audio_kbps as f64).round_ties_even() as u32;
         let clamped = self.clamp(video_kbps);
         result.note(format!(
             "Size mode: {target_mb:.0} MiB over {duration:.0}s -> {total_kbps:.0}k total, audio budget {audio_kbps}k -> video {video_kbps}k{}",
@@ -204,7 +205,9 @@ impl HevcGpuPlugin {
         let (width, height) = self.video_dimensions(media);
         let fps = self.fps(media);
         let bpp = self.config.bits_per_pixel;
-        self.clamp((bpp * 2.0 * width as f64 * height as f64 * fps / 1000.0).round() as u32)
+        self.clamp(
+            (bpp * 2.0 * width as f64 * height as f64 * fps / 1000.0).round_ties_even() as u32,
+        )
     }
 
     fn audio_budget_kbps(&self, media: &MediaInfo) -> u32 {
@@ -656,8 +659,8 @@ impl Plugin for HevcGpuPlugin {
             }
 
             target_bitrate = Some(computed);
-            minimum_bitrate = (computed as f64 * 0.75).round() as u32;
-            maximum_bitrate = (computed as f64 * 1.25).round() as u32;
+            minimum_bitrate = (computed as f64 * 0.75).round_ties_even() as u32;
+            maximum_bitrate = (computed as f64 * 1.25).round_ties_even() as u32;
             result.note("Bitrate settings:");
             result.note(format!("  target  = {computed}kbps"));
             result.note(format!("  minimum = {minimum_bitrate}kbps"));

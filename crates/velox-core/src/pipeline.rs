@@ -253,12 +253,13 @@ impl Pipeline {
             cancel: options.cancel.clone(),
         };
 
-        match state.run().await {
-            Ok(()) => {}
+        let run_succeeded = match state.run().await {
+            Ok(()) => true,
             Err(VeloxError::Cancelled) => {
                 report.cancelled = true;
                 report.error = Some("Processing stopped by user".to_string());
                 tracing::warn!("{}: processing stopped by user", source.display());
+                false
             }
             Err(error) => {
                 report.error = Some(error.to_string());
@@ -267,12 +268,13 @@ impl Pipeline {
                     path: Some(source.clone()),
                     message: error.to_string(),
                 });
+                false
             }
-        }
+        };
 
         report.passes = state.passes;
         report.outcomes = state.outcomes;
-        report.modified = state.modified;
+        report.modified = run_succeeded && state.modified;
         let would_change = state.would_change;
         let current = state.current.clone();
 
