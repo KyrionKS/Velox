@@ -228,8 +228,8 @@
 </script>
 
 <div class="app">
-  <header class="app-header" data-tauri-drag-region>
-    <div class="brand">
+  <header class="app-header">
+    <div class="brand" data-tauri-drag-region>
       <span class="mark"><Zap size={15} strokeWidth={2.4} /></span>
       <div class="brand-text">
         <span class="wordmark">Velox</span>
@@ -251,6 +251,8 @@
         {/if}
       </button>
     </nav>
+
+    <div class="header-drag" data-tauri-drag-region></div>
 
     <div class="header-actions">
       <button class="icon-button" onclick={() => (settingsOpen = true)} title="Settings (⌘,)">
@@ -429,6 +431,11 @@
     background: var(--green);
     box-shadow: 0 0 0 3px var(--green-soft);
     animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .header-drag {
+    flex: 1;
+    align-self: stretch;
   }
 
   .header-actions {
