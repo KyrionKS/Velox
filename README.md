@@ -129,5 +129,23 @@ npm run check
 ```
 
 The core tests cover the ported plugin behaviour, remux argument generation,
-configuration compatibility and the pipeline engine. The CLI and Tauri
-backend are exercised against generated ffmpeg samples during development.
+configuration compatibility and the pipeline engine.
+
+The end-to-end suite runs the real pipeline against generated ffmpeg samples
+(messy stream order, 5.1 E-AC-3 → AAC, already-HEVC, MP4 container change,
+output folder, dry run):
+
+```bash
+PATH=/tmp/opencode/ffbin:$PATH cargo test -p velox-core --test e2e -- --nocapture
+```
+
+On macOS it also exercises `hevc_videotoolbox` in constant-quality mode when
+the encoder is available:
+
+```bash
+brew install ffmpeg
+cargo test -p velox-core --test e2e -- --nocapture
+npm run tauri build
+```
+
+CI builds the macOS app and runs the same tests on a macOS runner.
