@@ -777,3 +777,30 @@ async fn e2e_successful_report_skips_file_on_the_next_run() {
         "skipped file must stay untouched"
     );
 }
+
+#[tokio::test]
+async fn e2e_container_change_report_marks_the_output_as_processed() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        skip();
+        return;
+    };
+    let tmp = TempDir::new().expect("tempdir");
+    let source = tmp.path().join("sample.mkv");
+    make_simple_sample(&ffmpeg, &source);
+
+    let mut config = base_config(&ffmpeg, &ffprobe);
+    config.plugins.hevc_gpu.container = "mp4".to_string();
+    let (first, _backend) = run_pipeline(config.clone(), &source, false).await;
+    assert!(first.ok(), "pipeline error: {:?}", first.error);
+    let output = first.final_path.as_ref().expect("mp4 output").clone();
+    assert_eq!(
+        output.extension().and_then(|value| value.to_str()),
+        Some("mp4")
+    );
+    assert!(!source.exists());
+
+    let (second, _backend) = run_pipeline(config, &output, false).await;
+    assert!(second.ok(), "pipeline error: {:?}", second.error);
+    assert!(second.skipped, "output must be recognised as processed");
+    assert_eq!(second.reason, "already processed");
+}

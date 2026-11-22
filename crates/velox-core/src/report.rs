@@ -441,6 +441,37 @@ pub fn existing_report(path: &Path) -> Option<PathBuf> {
     if text.contains("\n  ERROR\n") || text.contains("\n  FEHLER\n") {
         return None;
     }
+
+    // The report names its output file. This avoids treating a sibling with the
+    // same stem (for example movie.mkv next to a processed movie.mp4) as done.
+    let file_name = path.file_name()?.to_string_lossy();
+    let reported_name = text.lines().find_map(|line| {
+        let line = line.trim_start();
+        for label in ["File", "Datei"] {
+            if let Some(rest) = line.strip_prefix(label) {
+                let rest = rest.trim();
+                if !rest.is_empty() {
+                    return Some(rest);
+                }
+            }
+        }
+        None
+    });
+    let matches = match reported_name {
+        Some(reported) if reported == file_name => true,
+        // A container change moves the report next to a sibling (e.g. movie.mp4)
+        // while the report still names the original (movie.mkv). Accept that
+        // only when the original named file is gone, so two real siblings do
+        // not mark each other as processed.
+        Some(reported) => {
+            Path::new(reported).file_stem() == path.file_stem()
+                && !path.with_file_name(reported).exists()
+        }
+        None => false,
+    };
+    if !matches {
+        return None;
+    }
     Some(report)
 }
 
@@ -541,12 +572,23 @@ mod tests {
         let report = source.with_file_name("movie-report.txt");
         std::fs::write(
             &report,
-            "VELOX – Processing report\n  Result         replaced\n",
+            "VELOX – Processing report\n  File           movie.mkv\n  Result         replaced\n",
         )
         .unwrap();
         assert_eq!(existing_report(&source), Some(report.clone()));
 
-        std::fs::write(&report, "VELOX – Processing report\n  ERROR\n  boom\n").unwrap();
+        std::fs::write(
+            &report,
+            "VELOX – Processing report\n  File           other.mkv\n  Result         replaced\n",
+        )
+        .unwrap();
+        assert!(existing_report(&source).is_none());
+
+        std::fs::write(
+            &report,
+            "VELOX – Processing report\n  File           movie.mkv\n  ERROR\n  boom\n",
+        )
+        .unwrap();
         assert!(existing_report(&source).is_none());
     }
 
