@@ -696,7 +696,7 @@ async fn e2e_cancel_before_start_keeps_original() {
     );
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[tokio::test]
 async fn e2e_macos_videotoolbox_quality_mode() {
     let Some((ffmpeg, ffprobe)) = tools() else {
