@@ -364,6 +364,27 @@ mod behavior_tests {
     }
 
     #[tokio::test]
+    async fn clean_audio_tags_stereo_as_2_0_and_skips_mono() {
+        let mut stereo = stream(0, "audio", "aac");
+        stereo.channels = Some(2);
+        let mut mono = stream(1, "audio", "aac");
+        mono.channels = Some(1);
+        let media = media(vec![stereo, mono, stream(2, "video", "h264")]);
+        let config = CleanAudioConfig {
+            language: "eng,und".into(),
+            tag_title: true,
+            ..Default::default()
+        };
+        let result = run(&CleanAudioPlugin::new(config), &media).await;
+        let plan = result.remux.unwrap();
+        assert_eq!(
+            plan.metadata.get(&0).unwrap()[0],
+            ("title".to_string(), "2.0".to_string())
+        );
+        assert!(!plan.metadata.contains_key(&1));
+    }
+
+    #[tokio::test]
     async fn clean_subs_removes_sdh_independently() {
         let mut sdh = stream(0, "subtitle", "subrip");
         sdh.tags

@@ -434,7 +434,7 @@ pub fn existing_report(path: &Path) -> Option<PathBuf> {
             return None;
         }
     }
-    let text = std::fs::read_to_string(&report).ok()?;
+    let text = std::fs::read_to_string(&report).ok()?.replace("\r\n", "\n");
     if !text.contains("VELOX") {
         return None;
     }
@@ -580,6 +580,27 @@ mod tests {
         std::fs::write(
             &report,
             "VELOX – Processing report\n  File           other.mkv\n  Result         replaced\n",
+        )
+        .unwrap();
+        assert!(existing_report(&source).is_none());
+
+        std::fs::write(
+            &report,
+            "VELOX – Verarbeitungsbericht\n  Datei          movie.mkv\n  Ergebnis       ersetzt\n",
+        )
+        .unwrap();
+        assert_eq!(existing_report(&source), Some(report.clone()));
+
+        std::fs::write(
+            &report,
+            "VELOX – Verarbeitungsbericht\n  Datei          movie.mkv\n  FEHLER\n  boom\n",
+        )
+        .unwrap();
+        assert!(existing_report(&source).is_none());
+
+        std::fs::write(
+            &report,
+            "VELOX – Processing report\r\n  File           movie.mkv\r\n  ERROR\r\n  boom\r\n",
         )
         .unwrap();
         assert!(existing_report(&source).is_none());

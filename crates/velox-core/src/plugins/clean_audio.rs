@@ -10,6 +10,8 @@ use crate::media::{MediaInfo, Stream, AUDIO};
 
 use super::{PipelineContext, Plugin, PluginResult, RemuxPlan};
 
+const TITLE_BY_CHANNELS: [(u32, &str); 3] = [(8, "7.1"), (6, "5.1"), (2, "2.0")];
+
 pub struct CleanAudioPlugin {
     config: CleanAudioConfig,
 }
@@ -130,7 +132,12 @@ impl Plugin for CleanAudioPlugin {
             }
 
             if tag_title && !stream.tags.contains_key("title") {
-                if let Some(label) = stream.channels.and_then(MediaInfo::channel_label) {
+                if let Some(label) = stream.channels.and_then(|channels| {
+                    TITLE_BY_CHANNELS
+                        .iter()
+                        .find(|(value, _)| *value == channels)
+                        .map(|(_, label)| *label)
+                }) {
                     metadata
                         .entry(index)
                         .or_default()

@@ -528,21 +528,22 @@ impl Pipeline {
         }
 
         if final_container == source_container {
-            if general.keep_original {
-                let backup = source.with_file_name(format!(
-                    "{}.velox-orig{}",
-                    source
-                        .file_stem()
-                        .map(|value| value.to_string_lossy().into_owned())
-                        .unwrap_or_default(),
-                    source
-                        .extension()
-                        .map(|value| format!(".{}", value.to_string_lossy()))
-                        .unwrap_or_default()
-                ));
-                std::fs::copy(source, backup)?;
+            // Move the original aside before writing the new file.  On Windows
+            // rename cannot replace an existing file, and copying over the
+            // original would risk corrupting it if the copy failed.
+            let backup = backup_path(source);
+            let _ = std::fs::remove_file(&backup);
+            std::fs::rename(source, &backup)?;
+            if let Err(error) = move_file(current, source) {
+                // Restore the original when the replacement could not be
+                // written (for example a full disk).
+                let _ = std::fs::remove_file(source);
+                let _ = std::fs::rename(&backup, source);
+                return Err(error);
             }
-            move_file(current, source)?;
+            if !general.keep_original {
+                let _ = std::fs::remove_file(&backup);
+            }
             return Ok(source.to_path_buf());
         }
 
@@ -555,18 +556,7 @@ impl Pipeline {
     }
 
     fn remove_backup(&self, source: &Path) {
-        let backup = source.with_file_name(format!(
-            "{}.velox-orig{}",
-            source
-                .file_stem()
-                .map(|value| value.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            source
-                .extension()
-                .map(|value| format!(".{}", value.to_string_lossy()))
-                .unwrap_or_default()
-        ));
-        let _ = std::fs::remove_file(backup);
+        let _ = std::fs::remove_file(backup_path(source));
     }
 }
 
@@ -1083,6 +1073,20 @@ fn apply_plan_to_media(media: &MediaInfo, plan: &RemuxPlan) -> MediaInfo {
 
 fn file_size(path: &Path) -> u64 {
     std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
+}
+
+fn backup_path(source: &Path) -> PathBuf {
+    source.with_file_name(format!(
+        "{}.velox-orig{}",
+        source
+            .file_stem()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        source
+            .extension()
+            .map(|value| format!(".{}", value.to_string_lossy()))
+            .unwrap_or_default()
+    ))
 }
 
 fn unique_path(path: &Path) -> PathBuf {

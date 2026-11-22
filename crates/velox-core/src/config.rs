@@ -576,8 +576,13 @@ impl Config {
         }
         let text = self.to_toml()?;
         let tmp = path.with_extension("toml.tmp");
-        fs::write(&tmp, text)?;
-        fs::rename(&tmp, path)?;
+        fs::write(&tmp, &text)?;
+        if fs::rename(&tmp, path).is_err() {
+            // Windows cannot replace an existing file with rename(); fall
+            // back to a direct write instead of leaving the config untouched.
+            fs::write(path, &text)?;
+            let _ = fs::remove_file(&tmp);
+        }
         Ok(())
     }
 

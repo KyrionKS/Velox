@@ -439,7 +439,7 @@ fn gather_files(paths: &[String], recursive: bool, extensions: &[String]) -> Vec
     let mut seen = HashSet::new();
 
     for raw in paths {
-        let path = PathBuf::from(raw.replace('~', &home_dir_string()));
+        let path = expand_path(raw);
         if path.is_dir() {
             collect_dir(&path, recursive, extensions, &mut files, &mut seen);
         } else if path.is_file() {
@@ -493,6 +493,17 @@ fn push_unique(path: PathBuf, files: &mut Vec<PathBuf>, seen: &mut HashSet<PathB
 
 fn home_dir_string() -> String {
     std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+fn expand_path(raw: &str) -> PathBuf {
+    if raw == "~" {
+        return PathBuf::from(home_dir_string());
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        return PathBuf::from(home_dir_string()).join(rest);
+    }
+    PathBuf::from(raw)
 }

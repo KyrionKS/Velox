@@ -14,7 +14,16 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                // Decorations are defined by the platform config; restoring a
+                // stale "decorated" flag would bring the old Linux titlebar back.
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        & !tauri_plugin_window_state::StateFlags::DECORATIONS,
+                )
+                .build(),
+        )
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
