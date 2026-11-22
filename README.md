@@ -51,7 +51,7 @@ The app is built around a task-first layout rather than a settings dialog:
   Advanced sections, including encoder detection and tool paths.
 
 Keyboard shortcuts: `⌘O` add files, `⌘⇧O` add a folder, `⌘R` start,
-`⌘,` settings, `⌘1` library, `⌘2` activity, `Esc` close settings.
+`⌘,` settings, `⌘1` library, `⌘2` activity, `F1` about, `Esc` close settings.
 
 **About Velox** (info button or app menu) shows the app/Tauri version, platform,
 ffmpeg/ffprobe paths and versions, and the active config path.

@@ -151,6 +151,11 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
+    if (event.key === "F1") {
+      event.preventDefault();
+      openAbout();
+      return;
+    }
     const meta = event.metaKey || event.ctrlKey;
     if (!meta) return;
     const target = event.target;
