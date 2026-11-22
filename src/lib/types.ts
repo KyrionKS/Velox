@@ -107,6 +107,7 @@ export interface PassEvent {
   input_bytes: number;
   output_bytes: number;
   command: string[];
+  planned?: boolean;
 }
 
 export interface RunReport {
@@ -123,6 +124,7 @@ export interface RunReport {
   report_path: string | null;
   output_dir: string | null;
   kept_original: boolean;
+  would_change: boolean;
   passes: PassEvent[];
 }
 
@@ -175,6 +177,7 @@ export interface FileInfo {
 export type FileStatus =
   | "queued"
   | "running"
+  | "would_change"
   | "done"
   | "error"
   | "stopped"
@@ -202,6 +205,7 @@ export interface PassRow {
   input: number;
   output: number;
   saved: number;
+  planned: boolean;
 }
 
 export const FILE_FILTERS = [

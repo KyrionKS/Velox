@@ -13,6 +13,186 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, VeloxError};
 
+/// TOML coercion helpers matching the Python implementation: the Python config
+/// loader accepts string values for booleans and numbers (`"true"`, `"3"`,
+/// `"0.045"`), while serde is strict by default.
+mod flex {
+    use std::fmt;
+    use std::marker::PhantomData;
+
+    use serde::de::{self, Deserializer, Unexpected, Visitor};
+
+    pub fn boolean<'de, D>(deserializer: D) -> Result<bool, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct BoolVisitor;
+
+        impl<'de> Visitor<'de> for BoolVisitor {
+            type Value = bool;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a boolean, 0/1 or a boolean-like string")
+            }
+
+            fn visit_bool<E: de::Error>(self, value: bool) -> Result<bool, E> {
+                Ok(value)
+            }
+
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<bool, E> {
+                match value {
+                    0 => Ok(false),
+                    1 => Ok(true),
+                    other => Err(E::invalid_value(Unexpected::Signed(other), &self)),
+                }
+            }
+
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<bool, E> {
+                match value {
+                    0 => Ok(false),
+                    1 => Ok(true),
+                    other => Err(E::invalid_value(Unexpected::Unsigned(other), &self)),
+                }
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<bool, E> {
+                match value.trim().to_ascii_lowercase().as_str() {
+                    "1" | "true" | "yes" | "on" => Ok(true),
+                    "0" | "false" | "no" | "off" | "" => Ok(false),
+                    _ => Err(E::invalid_value(Unexpected::Str(value), &self)),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(BoolVisitor)
+    }
+
+    trait FlexNumber: Sized {
+        fn from_i64(value: i64) -> Option<Self>;
+        fn from_u64(value: u64) -> Option<Self>;
+        fn from_f64(value: f64) -> Option<Self>;
+        fn parse_str(value: &str) -> Option<Self>;
+    }
+
+    impl FlexNumber for f64 {
+        fn from_i64(value: i64) -> Option<Self> {
+            Some(value as f64)
+        }
+
+        fn from_u64(value: u64) -> Option<Self> {
+            Some(value as f64)
+        }
+
+        fn from_f64(value: f64) -> Option<Self> {
+            Some(value)
+        }
+
+        fn parse_str(value: &str) -> Option<Self> {
+            value.trim().parse().ok()
+        }
+    }
+
+    macro_rules! integer_number {
+        ($ty:ty) => {
+            impl FlexNumber for $ty {
+                fn from_i64(value: i64) -> Option<Self> {
+                    <$ty>::try_from(value).ok()
+                }
+
+                fn from_u64(value: u64) -> Option<Self> {
+                    <$ty>::try_from(value).ok()
+                }
+
+                fn from_f64(value: f64) -> Option<Self> {
+                    if value.is_finite()
+                        && value.fract() == 0.0
+                        && (i64::MIN as f64..=i64::MAX as f64).contains(&value)
+                    {
+                        <$ty>::try_from(value as i64).ok()
+                    } else {
+                        None
+                    }
+                }
+
+                fn parse_str(value: &str) -> Option<Self> {
+                    value.trim().parse().ok()
+                }
+            }
+        };
+    }
+
+    integer_number!(u32);
+    integer_number!(i32);
+    integer_number!(usize);
+
+    fn number<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: FlexNumber,
+    {
+        struct NumberVisitor<T>(PhantomData<T>);
+
+        impl<'de, T: FlexNumber> Visitor<'de> for NumberVisitor<T> {
+            type Value = T;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a number or a numeric string")
+            }
+
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<T, E> {
+                T::from_i64(value).ok_or_else(|| E::invalid_value(Unexpected::Signed(value), &self))
+            }
+
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<T, E> {
+                T::from_u64(value)
+                    .ok_or_else(|| E::invalid_value(Unexpected::Unsigned(value), &self))
+            }
+
+            fn visit_f64<E: de::Error>(self, value: f64) -> Result<T, E> {
+                T::from_f64(value).ok_or_else(|| E::invalid_value(Unexpected::Float(value), &self))
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<T, E> {
+                T::parse_str(value).ok_or_else(|| E::invalid_value(Unexpected::Str(value), &self))
+            }
+
+            fn visit_string<E: de::Error>(self, value: String) -> Result<T, E> {
+                T::parse_str(&value).ok_or_else(|| E::invalid_value(Unexpected::Str(&value), &self))
+            }
+        }
+
+        deserializer.deserialize_any(NumberVisitor(PhantomData))
+    }
+
+    pub fn usize_value<'de, D>(deserializer: D) -> Result<usize, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        number::<D, usize>(deserializer)
+    }
+
+    pub fn u32_value<'de, D>(deserializer: D) -> Result<u32, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        number::<D, u32>(deserializer)
+    }
+
+    pub fn i32_value<'de, D>(deserializer: D) -> Result<i32, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        number::<D, i32>(deserializer)
+    }
+
+    pub fn f64_value<'de, D>(deserializer: D) -> Result<f64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        number::<D, f64>(deserializer)
+    }
+}
+
 pub const DEFAULT_ORDER: [&str; 7] = [
     "reorder_streams",
     "clean_audio",
@@ -51,13 +231,19 @@ fn default_order() -> Vec<String> {
 pub struct GeneralConfig {
     pub ffmpeg_path: String,
     pub ffprobe_path: String,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub keep_original: bool,
     pub output_dir: String,
     pub temp_dir: String,
+    #[serde(default, deserialize_with = "flex::usize_value")]
     pub concurrency: usize,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub verify_output: bool,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub verify_full_decode: bool,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub write_report: bool,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub process_non_video: bool,
 }
 
@@ -106,6 +292,7 @@ impl Default for PipelineConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReorderStreamsConfig {
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub enabled: bool,
 }
 
@@ -118,10 +305,13 @@ impl Default for ReorderStreamsConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CleanAudioConfig {
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub enabled: bool,
     pub language: String,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub commentary: bool,
     pub tag_language: String,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub tag_title: bool,
     pub default_audio: String,
 }
@@ -142,9 +332,12 @@ impl Default for CleanAudioConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CleanSubsConfig {
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub enabled: bool,
     pub language: String,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub commentary: bool,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub sdh: bool,
     pub tag_language: String,
 }
@@ -164,11 +357,15 @@ impl Default for CleanSubsConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StandardiseAudioConfig {
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub enabled: bool,
     pub audio_codec: String,
+    #[serde(default, deserialize_with = "flex::u32_value")]
     pub audio_bitrate_kbps: u32,
+    #[serde(default, deserialize_with = "flex::u32_value")]
     pub audio_bitrate_min_per_channel_kbps: u32,
     pub aac_encoder: String,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub reencode_target_codec: bool,
 }
 
@@ -188,27 +385,44 @@ impl Default for StandardiseAudioConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HevcGpuConfig {
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub enabled: bool,
     pub target_codec: String,
     pub encoder: String,
     pub bitrate_mode: String,
+    #[serde(default, deserialize_with = "flex::f64_value")]
     pub bits_per_pixel: f64,
+    #[serde(default, deserialize_with = "flex::f64_value")]
     pub target_size_mb: f64,
+    #[serde(default, deserialize_with = "flex::f64_value")]
     pub size_overhead_percent: f64,
+    #[serde(default, deserialize_with = "flex::u32_value")]
     pub fallback_audio_kbps: u32,
+    #[serde(default, deserialize_with = "flex::i32_value")]
     pub quality: i32,
+    #[serde(default, deserialize_with = "flex::u32_value")]
     pub min_video_kbps: u32,
+    #[serde(default, deserialize_with = "flex::u32_value")]
     pub max_video_kbps: u32,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub hardware_decode: bool,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub try_use_gpu: bool,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub allow_cpu_fallback: bool,
     pub cpu_preset: String,
     pub container: String,
+    #[serde(default, deserialize_with = "flex::u32_value")]
     pub bitrate_cutoff: u32,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub enable_10bit: bool,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub bframes_enabled: bool,
+    #[serde(default, deserialize_with = "flex::u32_value")]
     pub bframes_value: u32,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub spatial_aq: bool,
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub force_conform: bool,
     pub exclude_gpus: String,
     pub allowed_codecs: String,
@@ -248,6 +462,7 @@ impl Default for HevcGpuConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReorderAllStreamsConfig {
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub enabled: bool,
     pub process_order: String,
     pub languages: String,
@@ -272,10 +487,15 @@ impl Default for ReorderAllStreamsConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FileSizeCheckConfig {
+    #[serde(default, deserialize_with = "flex::boolean")]
     pub enabled: bool,
+    #[serde(default, deserialize_with = "flex::f64_value")]
     pub upper_bound: f64,
+    #[serde(default, deserialize_with = "flex::f64_value")]
     pub lower_bound: f64,
+    #[serde(default, deserialize_with = "flex::f64_value")]
     pub min_size_mb: f64,
+    #[serde(default, deserialize_with = "flex::f64_value")]
     pub max_size_mb: f64,
 }
 
@@ -503,6 +723,33 @@ mystery = "ignored"
         .unwrap();
         assert_eq!(config.general.ffmpeg_path, "/opt/ffmpeg");
         assert_eq!(config.plugins.clean_audio.language, "deu");
+    }
+
+    #[test]
+    fn string_values_are_coerced() {
+        let config = Config::from_toml(
+            r#"
+[general]
+concurrency = "3"
+verify_output = "no"
+
+[plugins.hevc_gpu]
+bits_per_pixel = "0.045"
+enable_10bit = "true"
+bframes_value = "7"
+quality = "55"
+target_size_mb = "1500"
+"#,
+        )
+        .unwrap();
+        assert_eq!(config.general.concurrency, 3);
+        assert!(!config.general.verify_output);
+        assert!(!config.general.keep_original);
+        assert_eq!(config.plugins.hevc_gpu.bits_per_pixel, 0.045);
+        assert!(config.plugins.hevc_gpu.enable_10bit);
+        assert_eq!(config.plugins.hevc_gpu.bframes_value, 7);
+        assert_eq!(config.plugins.hevc_gpu.quality, 55);
+        assert_eq!(config.plugins.hevc_gpu.target_size_mb, 1500.0);
     }
 
     #[test]

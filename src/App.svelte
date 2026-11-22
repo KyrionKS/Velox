@@ -3,7 +3,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open, message } from "@tauri-apps/plugin-dialog";
-  import { Activity, LayoutGrid, Minus, Settings2, Square, X, Zap } from "lucide-svelte";
+  import { Activity, AlertTriangle, FolderOpen, LayoutGrid, Minus, Settings2, Square, X, Zap } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
 
   import ActivityView from "./components/Activity.svelte";
@@ -11,7 +11,16 @@
   import RunPanel from "./components/RunPanel.svelte";
   import SettingsSheet from "./components/SettingsSheet.svelte";
   import StatusBar from "./components/StatusBar.svelte";
-  import { configPath as getConfigPath, detectEncoders, getConfig, saveConfig, scanFolder } from "./lib/api";
+  import {
+    configError as getConfigError,
+    configPath as getConfigPath,
+    detectEncoders,
+    getConfig,
+    reloadConfig,
+    saveConfig,
+    scanFolder,
+    startLogStream,
+  } from "./lib/api";
   import { demoConfig, demoEncoders } from "./lib/demo";
   import { estimateOutput } from "./lib/estimate";
   import { baseName } from "./lib/format";
@@ -27,6 +36,7 @@
   let configFile = $state("");
   let encoders = $state<EncoderInfo | null>(null);
   let encoderError = $state<string | null>(null);
+  let configError = $state<string | null>(null);
   let toast = $state<string | null>(null);
   let toastTimer: number | null = null;
   let isDemo = $state(false);
@@ -55,12 +65,16 @@
         encoders = demoEncoders;
         if (params.has("demo")) {
           if (params.get("demo") === "activity") run.loadDemoActivity();
+          else if (params.get("demo") === "preview") run.loadDemoPreview();
           else run.loadDemo();
         }
         return;
       }
 
       await run.init();
+      await listen<string>("velox://log", (event) => {
+        run.log(event.payload);
+      });
       unlistenMenu = await listen<string>("velox://menu", (event) => {
         switch (event.payload) {
           case "settings":
@@ -94,15 +108,12 @@
       try {
         config = await getConfig();
         configFile = await getConfigPath();
+        configError = await getConfigError();
       } catch (error) {
         showToast(String(error));
       }
-      try {
-        encoders = await detectEncoders();
-        encoderError = null;
-      } catch (error) {
-        encoderError = String(error);
-      }
+      await refreshEncoders();
+      await startLogStream().catch(() => {});
     })();
 
     window.addEventListener("keydown", handleKeydown);
@@ -120,6 +131,13 @@
       toast = null;
       toastTimer = null;
     }, 3500);
+  }
+
+  function resize(direction: "North" | "South" | "East" | "West" | "NorthEast" | "NorthWest" | "SouthEast" | "SouthWest") {
+    return (event: PointerEvent) => {
+      event.preventDefault();
+      void getCurrentWindow().startResizeDragging(direction);
+    };
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -206,11 +224,48 @@
     await run.start(dryRun);
   }
 
+  async function refreshEncoders(updatePaths = true) {
+    try {
+      const info = await detectEncoders();
+      encoders = info;
+      encoderError = null;
+      if (config && updatePaths) {
+        config.general.ffmpeg_path = info.ffmpeg;
+        config.general.ffprobe_path = info.ffprobe;
+      }
+    } catch (error) {
+      encoders = null;
+      encoderError = String(error);
+    }
+  }
+
+  async function locateFfmpeg() {
+    if (!config) return;
+    try {
+      const selected = await open({ multiple: false });
+      if (typeof selected !== "string") return;
+      config.general.ffmpeg_path = selected;
+      const separator = selected.includes("\\") ? "\\" : "/";
+      const index = selected.lastIndexOf(separator);
+      const dir = index >= 0 ? selected.slice(0, index) : "";
+      const suffix = selected.toLowerCase().endsWith(".exe") ? ".exe" : "";
+      config.general.ffprobe_path = dir ? `${dir}${separator}ffprobe${suffix}` : "ffprobe";
+      await saveConfig(config);
+      configError = null;
+      await refreshEncoders();
+      showToast("ffmpeg updated.");
+    } catch (error) {
+      showToast(`Could not update ffmpeg: ${String(error)}`);
+    }
+  }
+
   async function saveSettings() {
     if (!config) return;
     try {
       await saveConfig(config);
       configFile = await getConfigPath();
+      configError = null;
+      await refreshEncoders();
       showToast("Settings saved.");
     } catch (error) {
       showToast(`Could not save settings: ${String(error)}`);
@@ -219,9 +274,12 @@
 
   async function reloadSettings() {
     try {
-      config = await getConfig();
+      config = await reloadConfig();
+      configError = null;
+      await refreshEncoders();
       showToast("Settings reloaded.");
     } catch (error) {
+      configError = String(error);
       showToast(String(error));
     }
   }
@@ -269,6 +327,32 @@
   </header>
 
   {#if config}
+    {#if configError || encoderError}
+      <div class="notices">
+        {#if configError}
+          <div class="notice warning">
+            <AlertTriangle size={16} />
+            <div class="notice-text">
+              <strong>Settings could not be loaded</strong>
+              <span title={configError}>{configError}</span>
+            </div>
+            <button class="notice-button" onclick={() => (settingsOpen = true)}>Settings</button>
+            <button class="notice-button" onclick={reloadSettings}>Retry</button>
+          </div>
+        {/if}
+        {#if encoderError}
+          <div class="notice error">
+            <AlertTriangle size={16} />
+            <div class="notice-text">
+              <strong>ffmpeg / ffprobe not available</strong>
+              <span title={encoderError}>{encoderError}</span>
+            </div>
+            <button class="notice-button" onclick={locateFfmpeg}><FolderOpen size={13} /> Locate ffmpeg…</button>
+            <button class="notice-button" onclick={() => refreshEncoders()}>Retry</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
     <main class="main">
       {#if view === "library"}
         <div class="workspace">
@@ -307,6 +391,17 @@
 
   {#if toast}
     <div class="toast" role="status">{toast}</div>
+  {/if}
+
+  {#if platform === "linux"}
+    <button type="button" tabindex="-1" aria-label="Resize window" class="resize-handle north" onpointerdown={resize("North")}></button>
+    <button type="button" tabindex="-1" aria-label="Resize window" class="resize-handle south" onpointerdown={resize("South")}></button>
+    <button type="button" tabindex="-1" aria-label="Resize window" class="resize-handle west" onpointerdown={resize("West")}></button>
+    <button type="button" tabindex="-1" aria-label="Resize window" class="resize-handle east" onpointerdown={resize("East")}></button>
+    <button type="button" tabindex="-1" aria-label="Resize window" class="resize-handle north-west" onpointerdown={resize("NorthWest")}></button>
+    <button type="button" tabindex="-1" aria-label="Resize window" class="resize-handle north-east" onpointerdown={resize("NorthEast")}></button>
+    <button type="button" tabindex="-1" aria-label="Resize window" class="resize-handle south-west" onpointerdown={resize("SouthWest")}></button>
+    <button type="button" tabindex="-1" aria-label="Resize window" class="resize-handle south-east" onpointerdown={resize("SouthEast")}></button>
   {/if}
 </div>
 
@@ -493,6 +588,81 @@
     color: #fff;
   }
 
+  .notices {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    border-bottom: 1px solid var(--border);
+    background: var(--border);
+  }
+
+  .notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 11.5px;
+  }
+
+  .notice.warning {
+    background: var(--warn-bg);
+    color: var(--warn-text);
+  }
+
+  .notice.error {
+    background: var(--error-bg);
+    color: var(--error-text);
+  }
+
+  :global(.notice > svg) {
+    flex: 0 0 auto;
+  }
+
+  .notice-text {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .notice-text strong {
+    flex: 0 0 auto;
+    font-size: 11.5px;
+  }
+
+  .notice-text span {
+    overflow: hidden;
+    opacity: 0.8;
+    font-size: 10.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .notice-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    height: 25px;
+    padding: 0 8px;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 10.5px;
+    cursor: default;
+    opacity: 0.85;
+  }
+
+  .notice-button:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
   .main {
     flex: 1;
     min-height: 0;
@@ -523,6 +693,79 @@
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
+  }
+
+  .resize-handle {
+    position: fixed;
+    z-index: 100;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    -webkit-app-region: no-drag;
+  }
+
+  .resize-handle.north,
+  .resize-handle.south {
+    left: 8px;
+    right: 8px;
+    height: 5px;
+    cursor: ns-resize;
+  }
+
+  .resize-handle.north {
+    top: 0;
+  }
+
+  .resize-handle.south {
+    bottom: 0;
+  }
+
+  .resize-handle.west,
+  .resize-handle.east {
+    top: 8px;
+    bottom: 8px;
+    width: 5px;
+    cursor: ew-resize;
+  }
+
+  .resize-handle.west {
+    left: 0;
+  }
+
+  .resize-handle.east {
+    right: 0;
+  }
+
+  .resize-handle.north-west,
+  .resize-handle.north-east,
+  .resize-handle.south-west,
+  .resize-handle.south-east {
+    width: 9px;
+    height: 9px;
+  }
+
+  .resize-handle.north-west {
+    top: 0;
+    left: 0;
+    cursor: nwse-resize;
+  }
+
+  .resize-handle.north-east {
+    top: 0;
+    right: 0;
+    cursor: nesw-resize;
+  }
+
+  .resize-handle.south-west {
+    bottom: 0;
+    left: 0;
+    cursor: nesw-resize;
+  }
+
+  .resize-handle.south-east {
+    bottom: 0;
+    right: 0;
+    cursor: nwse-resize;
   }
 
   .toast {

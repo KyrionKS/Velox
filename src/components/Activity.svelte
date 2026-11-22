@@ -30,6 +30,13 @@
     {/if}
   </header>
 
+  {#if run.previewMode}
+    <div class="preview-banner">
+      <span class="preview-dot"></span>
+      Preview only — nothing was written. Planned passes are shown with “—” as output size.
+    </div>
+  {/if}
+
   <div class="layout">
     <div class="left">
       {#if run.totalOriginal > 0 || run.running || run.reports.length > 0}
@@ -47,6 +54,8 @@
               <span class="big-label">
                 {#if run.totalOriginal > 0}
                   {percent.toFixed(1)}% smaller · {fmtBytes(run.totalOriginal)} → {fmtBytes(run.totalFinal)}
+                {:else if run.previewMode}
+                  {run.files.length} file{run.files.length === 1 ? "" : "s"} checked — no files written
                 {:else}
                   files finished
                 {/if}
@@ -72,7 +81,11 @@
             </div>
             <div class="stat">
               <CheckCircle2 size={14} />
-              <span>{run.successCount} done{run.failedCount > 0 ? ` · ${run.failedCount} failed` : ""}</span>
+              <span>
+                {run.previewMode
+                  ? `${run.wouldChangeCount} would change`
+                  : `${run.successCount} done`}{run.failedCount > 0 ? ` · ${run.failedCount} failed` : ""}
+              </span>
             </div>
           </div>
         </div>
@@ -97,11 +110,13 @@
                   <td class="file" title={pass.file}>{pass.file}</td>
                   <td>
                     {pass.label}
-                    <span class="kind">{pass.kind}</span>
+                    <span class="kind">{pass.planned ? "planned" : pass.kind}</span>
                   </td>
                   <td class="num">{fmtBytes(pass.input)}</td>
-                  <td class="num">{fmtBytes(pass.output)}</td>
-                  <td class="num saved" class:loss={pass.saved < 0}>{fmtSaved(pass.saved)}</td>
+                  <td class="num">{pass.planned ? "—" : fmtBytes(pass.output)}</td>
+                  <td class="num saved" class:loss={!pass.planned && pass.saved < 0}>
+                    {pass.planned ? "—" : fmtSaved(pass.saved)}
+                  </td>
                 </tr>
               {/each}
             </tbody>
@@ -183,6 +198,26 @@
 
   .ghost-button:hover {
     background: var(--control-hover);
+  }
+
+  .preview-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 9px 12px;
+    border: 1px solid var(--accent);
+    border-radius: 9px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 11.5px;
+  }
+
+  .preview-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
   }
 
   .layout {

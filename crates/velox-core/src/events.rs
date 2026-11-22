@@ -18,6 +18,9 @@ pub struct PassEvent {
     pub command: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<RemuxPlan>,
+    /// True for the passes a dry run would execute.
+    #[serde(default)]
+    pub planned: bool,
 }
 
 impl PassEvent {
@@ -30,6 +33,9 @@ impl PassEvent {
     }
 
     pub fn describe(&self) -> String {
+        if self.planned {
+            return format!("{} (planned — nothing written)", self.label());
+        }
         let saved = self.saved_bytes();
         let sign = if saved >= 0 { "\u{2212}" } else { "+" };
         format!(
@@ -163,6 +169,7 @@ mod tests {
             output_bytes: 1_500_000,
             command: vec![],
             plan: None,
+            planned: false,
         };
         assert_eq!(event.label(), "Clean Audio + Order Streams");
         assert_eq!(

@@ -488,6 +488,11 @@ async fn e2e_dry_run_writes_nothing() {
 
     assert!(report.ok(), "pipeline error: {:?}", report.error);
     assert!(!report.modified, "dry run must not report a modification");
+    assert!(report.would_change, "dry run must report planned changes");
+    assert!(
+        !report.passes.is_empty() && report.passes.iter().all(|pass| pass.planned),
+        "dry-run passes must be marked as planned"
+    );
     assert_eq!(std::fs::read(&source).expect("read source"), original);
     let entries_after = std::fs::read_dir(tmp.path()).expect("read dir").count();
     assert_eq!(

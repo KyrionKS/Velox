@@ -1,4 +1,5 @@
 mod commands;
+mod logging;
 mod menu;
 mod state;
 
@@ -9,6 +10,8 @@ use tauri::{Manager, RunEvent, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logging::init();
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -16,6 +19,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::config_path,
+            commands::config_error,
+            commands::reload_config,
             commands::save_config,
             commands::detect_encoders,
             commands::probe_file,
@@ -23,6 +28,7 @@ pub fn run() {
             commands::scan_folder,
             commands::start_run,
             commands::stop_run,
+            commands::start_log_stream,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

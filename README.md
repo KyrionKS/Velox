@@ -55,7 +55,13 @@ Keyboard shortcuts: `⌘O` add files, `⌘⇧O` add a folder, `⌘R` start,
 
 Velox also looks in `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`
 and `/usr/bin` when `PATH` is minimal (for example when launched from Finder).
-The paths can be changed in *Settings → Advanced → Tools*.
+If the tools are missing, the app shows a banner with a **Locate ffmpeg…**
+button; the resolved paths are written back when settings are saved or a run
+starts.
+
+An invalid or unreadable `config.toml` never blocks startup: Velox falls back
+to defaults, shows the exact error in a banner, and *Settings → Reload* reads
+the file from disk again.
 
 ## Build
 
@@ -102,6 +108,9 @@ Key settings:
 - `general.concurrency = 2` — files processed in parallel.
 - `general.temp_dir = "source"` — scratch files stay on the source volume.
 
+Numeric and boolean values may be quoted (`concurrency = "3"`,
+`enable_10bit = "true"`), matching the Python version.
+
 ## Project layout
 
 ```
@@ -129,7 +138,8 @@ npm run check
 ```
 
 The core tests cover the ported plugin behaviour, remux argument generation,
-configuration compatibility and the pipeline engine.
+configuration compatibility and the pipeline engine. Backend warnings and
+errors (for example unknown config keys) are shown in **Activity → Log**.
 
 The end-to-end suite runs the real pipeline against generated ffmpeg samples
 (messy stream order, 5.1 E-AC-3 → AAC, already-HEVC, MP4 container change,
@@ -138,6 +148,9 @@ output folder, dry run):
 ```bash
 PATH=/tmp/opencode/ffbin:$PATH cargo test -p velox-core --test e2e -- --nocapture
 ```
+
+A dry run is shown as **planned passes** in the app; outputs and savings are
+marked with “—” and no files are written.
 
 On macOS it also exercises `hevc_videotoolbox` in constant-quality mode when
 the encoder is available:

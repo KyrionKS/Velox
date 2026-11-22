@@ -3,6 +3,7 @@
     AlertCircle,
     CheckCircle2,
     Circle,
+    Eye,
     FileVideo,
     FolderPlus,
     Loader2,
@@ -70,6 +71,7 @@
     if (file.analyzing) return "Reading streams…";
     if (file.status === "running") return file.step;
     if (file.status === "done") return "Optimized";
+    if (file.status === "would_change") return "Would change (preview)";
     if (file.status === "error") return file.step;
     if (file.status === "stopped") return "Stopped";
     if (file.status === "skipped") return "Skipped — not a video";
@@ -80,6 +82,7 @@
 
   function resultText(file: FileRow): string {
     if (file.status === "done") return file.result;
+    if (file.status === "would_change") return "preview";
     if (file.status === "error") return "Failed";
     if (file.status === "stopped") return "Stopped";
     if (file.status === "skipped") return "Skipped";
@@ -136,7 +139,7 @@
   {:else}
     <div class="file-list">
       {#each run.files as file (file.path)}
-        <article class:running={file.status === "running"} class:done={file.status === "done"} class:error={file.status === "error"} class="file-card">
+        <article class:running={file.status === "running"} class:done={file.status === "done"} class:would_change={file.status === "would_change"} class:error={file.status === "error"} class="file-card">
           <div class="state">
             {#if file.status === "running"}
               <Loader2 size={17} class="spin" />
@@ -144,6 +147,8 @@
               <CheckCircle2 size={17} />
             {:else if file.status === "error"}
               <AlertCircle size={17} />
+            {:else if file.status === "would_change"}
+              <Eye size={16} />
             {:else if file.status === "stopped"}
               <Square size={13} />
             {:else if file.status === "skipped"}
@@ -456,6 +461,10 @@
 
   .done .state {
     color: var(--green);
+  }
+
+  .would_change .state {
+    color: var(--accent-text);
   }
 
   .error .state {

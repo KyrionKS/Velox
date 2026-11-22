@@ -76,6 +76,9 @@ pub struct RunReport {
     pub report_path: Option<PathBuf>,
     pub output_dir: Option<String>,
     pub kept_original: bool,
+    /// Set by dry runs when the pipeline would change the file.
+    #[serde(default)]
+    pub would_change: bool,
     pub passes: Vec<PassEvent>,
     pub outcomes: Vec<PluginOutcome>,
 }
@@ -98,6 +101,7 @@ impl RunReport {
             report_path: None,
             output_dir: None,
             kept_original: false,
+            would_change: false,
             passes: Vec::new(),
             outcomes: Vec::new(),
         }
@@ -275,6 +279,7 @@ impl Pipeline {
         report.passes = state.passes;
         report.outcomes = state.outcomes;
         report.modified = run_succeeded && state.modified;
+        report.would_change = options.dry_run && state.would_change;
         let would_change = state.would_change;
         let current = state.current.clone();
 
@@ -685,6 +690,24 @@ impl<'a> RunState<'a> {
 
             if self.ctx.dry_run {
                 self.would_change = true;
+                let event = PassEvent {
+                    steps: vec![name.to_string()],
+                    kind: if key == "hevc_gpu" {
+                        "transcode".to_string()
+                    } else {
+                        key.to_string()
+                    },
+                    input_bytes: file_size(&current),
+                    output_bytes: 0,
+                    command: full_display.clone(),
+                    plan: None,
+                    planned: true,
+                };
+                self.passes.push(event.clone());
+                self.sink.emit(PipelineEvent::PassFinished {
+                    path: self.source.clone(),
+                    pass: Box::new(event),
+                });
                 continue;
             }
 
@@ -718,6 +741,7 @@ impl<'a> RunState<'a> {
                 output_bytes,
                 command: full_display,
                 plan: None,
+                planned: false,
             };
             self.passes.push(event.clone());
             self.sink.emit(PipelineEvent::PassFinished {
@@ -782,6 +806,20 @@ impl<'a> RunState<'a> {
         if self.ctx.dry_run {
             self.virtual_media = Some(apply_plan_to_media(&base, &plan));
             self.would_change = true;
+            let event = PassEvent {
+                steps: steps.clone(),
+                kind: "remux".to_string(),
+                input_bytes: file_size(&current),
+                output_bytes: 0,
+                command: full_display.clone(),
+                plan: Some(plan),
+                planned: true,
+            };
+            self.passes.push(event.clone());
+            self.sink.emit(PipelineEvent::PassFinished {
+                path: self.source.clone(),
+                pass: Box::new(event),
+            });
             return Ok(());
         }
 
@@ -813,6 +851,7 @@ impl<'a> RunState<'a> {
             output_bytes,
             command: full_display,
             plan: Some(plan),
+            planned: false,
         };
         self.passes.push(event.clone());
         self.sink.emit(PipelineEvent::PassFinished {

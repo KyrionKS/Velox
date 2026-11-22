@@ -478,6 +478,7 @@ mod tests {
             report_path: None,
             output_dir: None,
             kept_original: false,
+            would_change: false,
             passes: vec![PassEvent {
                 steps: vec!["Encode Video".into()],
                 kind: "transcode".into(),
@@ -485,6 +486,7 @@ mod tests {
                 output_bytes: 1_000_000,
                 command: vec!["ffmpeg".into(), "-c:v".into(), "hevc_videotoolbox".into()],
                 plan: None,
+                planned: false,
             }],
             outcomes: Vec::new(),
         }

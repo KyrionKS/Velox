@@ -67,6 +67,21 @@ pub fn config_path(state: State<'_, AppState>) -> String {
 }
 
 #[tauri::command]
+pub fn config_error(state: State<'_, AppState>) -> Option<String> {
+    state.config_error()
+}
+
+#[tauri::command]
+pub fn start_log_stream(app: AppHandle) {
+    crate::logging::start_stream(app);
+}
+
+#[tauri::command]
+pub fn reload_config(state: State<'_, AppState>) -> Result<Config, String> {
+    state.reload_config()
+}
+
+#[tauri::command]
 pub fn save_config(config: Config, state: State<'_, AppState>) -> Result<(), String> {
     {
         let mut current = state.config.lock().unwrap();
@@ -74,7 +89,9 @@ pub fn save_config(config: Config, state: State<'_, AppState>) -> Result<(), Str
     }
     config
         .save(&state.config_path)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    state.clear_config_error();
+    Ok(())
 }
 
 #[tauri::command]

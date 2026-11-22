@@ -32,6 +32,7 @@ class RunStore {
   startedAt = $state<number | null>(null);
   now = $state(Date.now());
   error = $state<string | null>(null);
+  previewMode = $state(false);
   finishedSeconds = $state(0);
 
   private unlisten: UnlistenFn[] = [];
@@ -79,6 +80,10 @@ class RunStore {
 
   get failedCount(): number {
     return this.files.filter((file) => file.status === "error").length;
+  }
+
+  get wouldChangeCount(): number {
+    return this.files.filter((file) => file.status === "would_change").length;
   }
 
   addFiles(items: FileItem[]): void {
@@ -132,6 +137,7 @@ class RunStore {
     this.status = "Idle";
     this.logLines = [];
     this.error = null;
+    this.previewMode = false;
   }
 
   toggleLog(): void {
@@ -230,10 +236,10 @@ class RunStore {
     rows[2].step = "Output verification failed";
     rows[2].result = "Failed";
     this.passes = [
-      { file: rows[0].name, label: "Clean Audio Tracks + Order Streams", kind: "remux", input: 48_200_000_000, output: 47_900_000_000, saved: 300_000_000 },
-      { file: rows[0].name, label: "Encode Video", kind: "transcode", input: 47_900_000_000, output: 29_500_000_000, saved: 18_400_000_000 },
-      { file: rows[1].name, label: "Clean Subtitle Tracks + Standardise Audio Codec", kind: "remux", input: 6_400_000_000, output: 6_100_000_000, saved: 300_000_000 },
-      { file: rows[1].name, label: "Encode Video", kind: "transcode", input: 6_100_000_000, output: 3_400_000_000, saved: 2_700_000_000 },
+      { file: rows[0].name, label: "Clean Audio Tracks + Order Streams", kind: "remux", input: 48_200_000_000, output: 47_900_000_000, saved: 300_000_000, planned: false },
+      { file: rows[0].name, label: "Encode Video", kind: "transcode", input: 47_900_000_000, output: 29_500_000_000, saved: 18_400_000_000, planned: false },
+      { file: rows[1].name, label: "Clean Subtitle Tracks + Standardise Audio Codec", kind: "remux", input: 6_400_000_000, output: 6_100_000_000, saved: 300_000_000, planned: false },
+      { file: rows[1].name, label: "Encode Video", kind: "transcode", input: 6_100_000_000, output: 3_400_000_000, saved: 2_700_000_000, planned: false },
     ];
     this.totalOriginal = 48_200_000_000 + 6_400_000_000;
     this.totalFinal = 29_500_000_000 + 3_400_000_000;
@@ -259,11 +265,38 @@ class RunStore {
     ];
   }
 
+  loadDemoPreview(): void {
+    this.loadDemo();
+    this.previewMode = true;
+    for (const file of this.files) {
+      file.status = "would_change";
+      file.step = "Would change";
+      file.result = "preview";
+      file.progress = 1;
+    }
+    this.passes = [
+      { file: this.files[0].name, label: "Clean Audio Tracks + Order Streams", kind: "remux", input: 48_200_000_000, output: 0, saved: 0, planned: true },
+      { file: this.files[0].name, label: "Encode Video", kind: "transcode", input: 47_900_000_000, output: 0, saved: 0, planned: true },
+      { file: this.files[1].name, label: "Clean Subtitle Tracks + Standardise Audio Codec", kind: "remux", input: 6_400_000_000, output: 0, saved: 0, planned: true },
+    ];
+    this.overall = 1;
+    this.status = "Preview finished — nothing written.";
+    this.logLines = [
+      "Velox 0.1.0 - preview: no files will be modified",
+      "[Move Video First]",
+      "   Video is not in the first stream",
+      "[Clean Audio Tracks]",
+      "   Audio stream 2 has unwanted language tag deu, removing.",
+      "   -> ffmpeg (merged remux): ... (planned — nothing written)",
+    ];
+  }
+
   async start(dryRun = false): Promise<void> {
     if (this.running || this.files.length === 0) return;
     this.running = true;
     this.error = null;
     this.runHadError = false;
+    this.previewMode = dryRun;
     this.passes = [];
     this.reports = [];
     this.totalOriginal = 0;
@@ -399,7 +432,8 @@ class RunStore {
       }
       case "pass_finished": {
         const file = baseName(event.path);
-        const saved = event.pass.input_bytes - event.pass.output_bytes;
+        const planned = event.pass.planned ?? false;
+        const saved = planned ? 0 : event.pass.input_bytes - event.pass.output_bytes;
         this.passes.push({
           file,
           label: event.pass.steps.join(" + "),
@@ -407,10 +441,15 @@ class RunStore {
           input: event.pass.input_bytes,
           output: event.pass.output_bytes,
           saved,
+          planned,
         });
-        this.log(
-          `   ✓ ${file}: ${event.pass.steps.join(" + ")}: ${fmtBytes(event.pass.input_bytes)} → ${fmtBytes(event.pass.output_bytes)} (${fmtSaved(saved)})`,
-        );
+        if (planned) {
+          this.log(`   ○ ${file}: ${event.pass.steps.join(" + ")} (planned — nothing written)`);
+        } else {
+          this.log(
+            `   ✓ ${file}: ${event.pass.steps.join(" + ")}: ${fmtBytes(event.pass.input_bytes)} → ${fmtBytes(event.pass.output_bytes)} (${fmtSaved(saved)})`,
+          );
+        }
         break;
       }
       case "file_finished": {
@@ -428,7 +467,9 @@ class RunStore {
           ? "Finished with an error — see log."
           : failed > 0
             ? `Finished with ${failed} error(s).`
-            : "Finished.";
+            : this.previewMode
+              ? "Preview finished — nothing written."
+              : "Finished.";
         this.log(`Done. ${event.reports.length} file(s), ${failed} failed.`);
         if (this.startedAt) this.finishedSeconds = (Date.now() - this.startedAt) / 1000;
         this.startedAt = null;
@@ -464,6 +505,10 @@ class RunStore {
         file.status = "skipped";
         file.step = "Skipped";
         file.result = "skipped";
+      } else if (report.would_change) {
+        file.status = "would_change";
+        file.step = "Would change";
+        file.result = "preview";
       } else if (report.modified) {
         file.status = "done";
         file.step = "Done";

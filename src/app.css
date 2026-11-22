@@ -45,6 +45,8 @@
   --badge: #e7e7ed;
   --warn-bg: #fff4d6;
   --warn-text: #755a00;
+  --error-bg: #fdecec;
+  --error-text: #a32b2b;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 30px rgba(0, 0, 0, 0.045);
 }
@@ -95,6 +97,8 @@
     --badge: #32323a;
     --warn-bg: #3a2e10;
     --warn-text: #f0c75e;
+    --error-bg: #3a1d20;
+    --error-text: #ffb4b4;
     --shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
     --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 34px rgba(0, 0, 0, 0.24);
   }

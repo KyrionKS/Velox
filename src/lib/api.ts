@@ -9,6 +9,18 @@ export function saveConfig(config: Config): Promise<void> {
   return invoke("save_config", { config });
 }
 
+export function configError(): Promise<string | null> {
+  return invoke<string | null>("config_error");
+}
+
+export function reloadConfig(): Promise<Config> {
+  return invoke<Config>("reload_config");
+}
+
+export function startLogStream(): Promise<void> {
+  return invoke("start_log_stream");
+}
+
 export function configPath(): Promise<string> {
   return invoke<string>("config_path");
 }
