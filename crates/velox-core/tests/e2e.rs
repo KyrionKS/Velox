@@ -521,6 +521,181 @@ async fn e2e_verification_populates_final_media() {
     assert_eq!(probed.streams.len(), final_media.streams.len());
 }
 
+#[tokio::test]
+async fn e2e_file_size_error_keeps_original() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        skip();
+        return;
+    };
+    let tmp = TempDir::new().expect("tempdir");
+    let source = tmp.path().join("sample.mkv");
+    make_simple_sample(&ffmpeg, &source);
+    let original = std::fs::read(&source).expect("read source");
+
+    let mut config = base_config(&ffmpeg, &ffprobe);
+    config.plugins.file_size_check.upper_bound = 1.0;
+    let (report, _backend) = run_pipeline(config, &source, false).await;
+
+    assert!(report.error.is_some(), "size check must fail");
+    assert!(!report.ok());
+    assert!(source.exists(), "original must stay in place");
+    assert_eq!(
+        std::fs::read(&source).expect("read source"),
+        original,
+        "original bytes must be unchanged"
+    );
+    let backup = source.with_file_name("sample.velox-orig.mkv");
+    assert!(!backup.exists(), "no backup must be created on error");
+
+    let report_path = report.report_path.as_ref().expect("report path");
+    assert!(report_path.exists(), "report file must exist");
+    let text = std::fs::read_to_string(report_path).expect("read report");
+    assert!(text.contains("ERROR"), "report must contain ERROR");
+}
+
+#[tokio::test]
+async fn e2e_scratch_and_backup_are_cleaned() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        skip();
+        return;
+    };
+    let tmp = TempDir::new().expect("tempdir");
+    let source = tmp.path().join("sample.mkv");
+    make_simple_sample(&ffmpeg, &source);
+    let original = std::fs::read(&source).expect("read source");
+
+    let has_scratch = || {
+        std::fs::read_dir(tmp.path())
+            .expect("read dir")
+            .filter_map(|entry| entry.ok())
+            .any(|entry| {
+                entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false)
+                    && entry.file_name().to_string_lossy().starts_with(".velox-")
+            })
+    };
+    assert!(!has_scratch(), "no scratch dirs before the run");
+
+    let mut config = base_config(&ffmpeg, &ffprobe);
+    config.general.keep_original = false;
+    let (report, _backend) = run_pipeline(config, &source, false).await;
+
+    assert!(report.ok(), "pipeline error: {:?}", report.error);
+    assert!(report.modified, "expected the file to be modified");
+    assert!(!has_scratch(), "scratch dirs must be cleaned up");
+
+    let entries: Vec<String> = std::fs::read_dir(tmp.path())
+        .expect("read dir")
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        !entries.iter().any(|name| name.contains(".velox-orig")),
+        "no backup file must remain: {entries:?}"
+    );
+    assert_ne!(
+        std::fs::read(&source).expect("read source"),
+        original,
+        "original must have been replaced"
+    );
+}
+
+#[tokio::test]
+async fn e2e_keep_original_creates_backup() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        skip();
+        return;
+    };
+    let tmp = TempDir::new().expect("tempdir");
+    let source = tmp.path().join("sample.mkv");
+    make_simple_sample(&ffmpeg, &source);
+    let original = std::fs::read(&source).expect("read source");
+
+    let mut config = base_config(&ffmpeg, &ffprobe);
+    config.general.keep_original = true;
+    let (report, _backend) = run_pipeline(config, &source, false).await;
+
+    assert!(report.ok(), "pipeline error: {:?}", report.error);
+    let backup = source.with_file_name("sample.velox-orig.mkv");
+    assert!(backup.exists(), "backup file must exist");
+    assert_eq!(
+        std::fs::read(&backup).expect("read backup"),
+        original,
+        "backup must hold the original bytes"
+    );
+    let final_path = report.final_path.as_ref().expect("final path");
+    assert!(final_path.exists(), "final file must exist");
+}
+
+#[tokio::test]
+async fn e2e_remux_plugins_merge_into_one_pass() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        skip();
+        return;
+    };
+    let tmp = TempDir::new().expect("tempdir");
+    let source = tmp.path().join("messy.mkv");
+    make_messy_sample(&ffmpeg, &source);
+
+    let (report, _backend) = run_pipeline(base_config(&ffmpeg, &ffprobe), &source, false).await;
+    assert!(report.ok(), "pipeline error: {:?}", report.error);
+    assert_eq!(report.passes.len(), 2, "expected exactly two passes");
+    assert_eq!(report.passes[0].kind, "remux");
+    assert!(
+        report.passes[0].steps.len() >= 2,
+        "remux pass must merge several plugins"
+    );
+    assert_eq!(report.passes[1].kind, "transcode");
+}
+
+#[tokio::test]
+async fn e2e_cancel_before_start_keeps_original() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        skip();
+        return;
+    };
+    let tmp = TempDir::new().expect("tempdir");
+    let source = tmp.path().join("sample.mkv");
+    make_simple_sample(&ffmpeg, &source);
+    let original = std::fs::read(&source).expect("read source");
+
+    let config = base_config(&ffmpeg, &ffprobe);
+    let backend = Arc::new(
+        Ffmpeg::resolve(&config.general.ffmpeg_path, &config.general.ffprobe_path)
+            .expect("resolve ffmpeg/ffprobe"),
+    );
+    let pipeline = Pipeline::new(config, backend);
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let options = ProcessOptions {
+        dry_run: false,
+        cancel,
+    };
+    let report = pipeline
+        .process(&source, &options, Arc::new(NoopSink))
+        .await;
+
+    assert!(report.cancelled, "report must be marked cancelled");
+    assert!(!report.ok());
+    assert_eq!(
+        std::fs::read(&source).expect("read source"),
+        original,
+        "original must be unchanged"
+    );
+    assert!(
+        !source.with_file_name("sample.velox-orig.mkv").exists(),
+        "cancelled run must not create a backup"
+    );
+    // The current pipeline writes a report for cancellations so the user can
+    // see why the file was not replaced.
+    let report_path = report.report_path.as_ref().expect("cancellation report");
+    assert!(report_path.exists(), "cancellation report must exist");
+    let text = std::fs::read_to_string(report_path).expect("read report");
+    assert!(
+        text.contains("cancelled"),
+        "report must mark the cancellation"
+    );
+}
+
 #[cfg(target_os = "macos")]
 #[tokio::test]
 async fn e2e_macos_videotoolbox_quality_mode() {

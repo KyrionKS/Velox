@@ -340,9 +340,9 @@ impl Pipeline {
             tracing::info!("(dry-run) no files were written");
         }
 
-        if report.modified {
-            self.maybe_write_report(&mut report);
-        }
+        // Reports are also written for errors and cancellations, so the user
+        // can see why a file was not replaced.
+        self.maybe_write_report(&mut report);
 
         report.elapsed = started.elapsed().as_secs_f64();
         sink.emit(PipelineEvent::FileFinished {
