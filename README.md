@@ -5,9 +5,8 @@ cleans audio and subtitle tracks, standardises audio, encodes video (hardware
 where available) and verifies the result — with a desktop app built in Rust,
 Tauri 2 and Svelte 5.
 
-This repository is the Rust rewrite of the original Python/PySide6 version.
-The Python implementation remains on the `main` branch until the rewrite is
-merged; the historical release is tagged `python-final`.
+The original Python/PySide6 implementation is archived at the git tag
+`python-final`.
 
 ## What it does
 
@@ -105,7 +104,7 @@ The CLI keeps the original flags: `-c/--config`, `-r/--recursive`,
 
 ## Configuration
 
-The TOML format is compatible with the Python version, including the per-user
+The TOML format is compatible with the archived Python version, including the per-user
 path (`~/Library/Application Support/Velox/config.toml` on macOS,
 `~/.config/velox/config.toml` elsewhere). See `config.example.toml` for all
 options.
@@ -122,7 +121,7 @@ Key settings:
 - `general.skip_processed = true` — skip files with a current successful report.
 
 Numeric and boolean values may be quoted (`concurrency = "3"`,
-`enable_10bit = "true"`), matching the Python version.
+`enable_10bit = "true"`), matching the archived Python version.
 
 ## Project layout
 

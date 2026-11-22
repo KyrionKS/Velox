@@ -1,35 +1,17 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.eggs/
-build/
-dist/
-.venv/
-venv/
-env/
-
-# Test / tooling
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-.tools/
-
 # Velox runtime artifacts
 *.velox-orig.*
 .velox-*/
+
+# Frontend / Tauri
+node_modules/
+dist/
+target/
+src-tauri/target/
+src-tauri/gen/
+*.log
 
 # macOS
 .DS_Store
 
 # Local config
 config.toml
-
-# Rust / Tauri
-target/
-src-tauri/target/
-src-tauri/gen/
-node_modules/
-*.log
