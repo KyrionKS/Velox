@@ -23,6 +23,7 @@ export function estimateOutput(files: FileRow[], config: Config): Estimate | nul
   for (const file of files) {
     const info = file.info;
     if (!info || !info.is_video) continue;
+    if (config.general.skip_processed && info.already_processed) continue;
     counted += 1;
     source += info.size;
 
@@ -49,5 +50,10 @@ export function estimateOutput(files: FileRow[], config: Config): Estimate | nul
   }
 
   if (counted === 0) return null;
-  return { bytes, source, counted, total: files.filter((file) => file.info?.is_video !== false).length };
+  const total = files.filter(
+    (file) =>
+      file.info?.is_video &&
+      !(config.general.skip_processed && file.info.already_processed),
+  ).length;
+  return { bytes, source, counted, total };
 }

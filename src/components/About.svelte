@@ -4,11 +4,13 @@
 
   interface Props {
     info: AppInfo | null;
+    error: string | null;
     onClose: () => void;
     onOpenPath: (path: string) => void;
+    onRetry: () => void;
   }
 
-  let { info, onClose, onOpenPath }: Props = $props();
+  let { info, error, onClose, onOpenPath, onRetry }: Props = $props();
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
@@ -61,6 +63,17 @@
           <small title={info.ffprobe_path ?? ""}>{info.ffprobe_path ?? "not found"}</small>
         </div>
       </div>
+      <div class="row">
+        <span>Config</span>
+        <div class="tool">
+          <small title={info.config_path}>{info.config_path}</small>
+        </div>
+      </div>
+    </div>
+  {:else if error}
+    <div class="loading error">
+      <span>{error}</span>
+      <button class="button" onclick={onRetry}>Retry</button>
     </div>
   {:else}
     <div class="loading">Loading system information…</div>
@@ -216,6 +229,14 @@
     color: var(--muted);
     font-size: 11px;
     text-align: center;
+  }
+
+  .loading.error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+    color: var(--error-text);
   }
 
   .actions {

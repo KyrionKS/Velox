@@ -147,6 +147,7 @@ the same engine powers the CLI, the desktop app and tests.
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 npm run check
+npm test
 ```
 
 The core tests cover the ported plugin behaviour, remux argument generation,

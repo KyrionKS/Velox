@@ -42,6 +42,7 @@
   let configError = $state<string | null>(null);
   let aboutOpen = $state(params.has("about"));
   let aboutInfo = $state<AppInfo | null>(null);
+  let aboutError = $state<string | null>(null);
   let toast = $state<string | null>(null);
   let toastTimer: number | null = null;
   let isDemo = $state(false);
@@ -105,7 +106,7 @@
         }
       });
       unlistenDrop = await getCurrentWebview().onDragDropEvent((event) => {
-        if (event.payload.type !== "drop") return;
+        if (event.payload.type !== "drop" || run.running) return;
         const paths = event.payload.paths.filter((path) =>
           VIDEO_EXTENSIONS.has(path.split(".").pop()?.toLowerCase() ?? ""),
         );
@@ -146,7 +147,7 @@
   function resize(direction: "North" | "South" | "East" | "West" | "NorthEast" | "NorthWest" | "SouthEast" | "SouthWest") {
     return (event: PointerEvent) => {
       event.preventDefault();
-      void getCurrentWindow().startResizeDragging(direction);
+      void getCurrentWindow().startResizeDragging(direction).catch(() => {});
     };
   }
 
@@ -201,7 +202,7 @@
     if (run.running) return;
     try {
       const selected = await open({ multiple: true, filters: FILE_FILTERS });
-      if (!selected) return;
+      if (!selected || run.running) return;
       addPaths(Array.isArray(selected) ? selected : [selected]);
     } catch (error) {
       showToast(String(error));
@@ -214,6 +215,7 @@
       const folder = await open({ directory: true });
       if (!folder || Array.isArray(folder)) return;
       const items = await scanFolder(folder, true);
+      if (run.running) return;
       if (items.length === 0) {
         await message("No video files found in that folder.", { title: "Velox" });
         return;
@@ -228,6 +230,7 @@
   async function openAbout() {
     aboutOpen = true;
     aboutInfo = null;
+    aboutError = null;
     if (isDemo) {
       aboutInfo = demoAppInfo;
       return;
@@ -235,6 +238,7 @@
     try {
       aboutInfo = await getAppInfo();
     } catch (error) {
+      aboutError = String(error);
       showToast(String(error));
     }
   }
@@ -419,7 +423,13 @@
     <StatusBar onOpenActivity={() => (view = "activity")} />
 
     {#if aboutOpen}
-      <About info={aboutInfo} onClose={() => (aboutOpen = false)} onOpenPath={openReport} />
+      <About
+        info={aboutInfo}
+        error={aboutError}
+        onClose={() => (aboutOpen = false)}
+        onOpenPath={openReport}
+        onRetry={openAbout}
+      />
     {/if}
 
     {#if settingsOpen}

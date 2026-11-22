@@ -105,6 +105,7 @@ class RunStore {
   }
 
   async analyze(): Promise<void> {
+    if (this.running) return;
     const pending = this.files.filter((file) => !file.info && !file.analyzing);
     if (pending.length === 0) return;
     for (const file of pending) file.analyzing = true;
@@ -132,11 +133,13 @@ class RunStore {
       for (const file of pending) file.analyzing = false;
       this.error = `Could not analyse files: ${String(error)}`;
     }
+    this.updateOverall();
   }
 
   remove(path: string): void {
     if (this.running) return;
     this.files = this.files.filter((file) => file.path !== path);
+    this.updateOverall();
   }
 
   clear(): void {
@@ -151,6 +154,8 @@ class RunStore {
     this.logLines = [];
     this.error = null;
     this.previewMode = false;
+    this.finishedSeconds = 0;
+    this.startedAt = null;
   }
 
   toggleLog(): void {
@@ -358,6 +363,8 @@ class RunStore {
       this.running = false;
       this.status = "Could not start";
       this.error = String(error);
+      this.startedAt = null;
+      this.finishedSeconds = 0;
       this.log(`✗ ${String(error)}`);
       this.stopTimer();
     }
@@ -401,7 +408,7 @@ class RunStore {
     return this.files.find((file) => file.path === path);
   }
 
-  private handle(event: PipelineEvent): void {
+  handle(event: PipelineEvent): void {
     switch (event.type) {
       case "run_started": {
         this.status = this.status.startsWith("Starting dry") ? "Dry run…" : "Processing…";

@@ -43,7 +43,7 @@
   });
 
   const encodeEnabled = $derived(config.plugins.hevc_gpu.enabled);
-  const sourceBytes = $derived(run.sourceBytes);
+  const sourceBytes = $derived(estimate?.source ?? run.sourceBytes);
   const processedCount = $derived(run.processedCount);
   const savedPercent = $derived(
     estimate && sourceBytes > 0 ? Math.max(0, 100 - (estimate.bytes / sourceBytes) * 100) : 0,

@@ -41,7 +41,7 @@
 
   <div class="layout">
     <div class="left">
-      {#if run.totalOriginal > 0 || run.running || run.reports.length > 0}
+      {#if run.totalOriginal > 0 || run.running || run.reports.length > 0 || run.previewMode}
         <div class="summary-card" class:running={run.running}>
           <div class="summary-top">
             <div>
