@@ -35,6 +35,9 @@ verify_full_decode = false
 write_report = true
 # Also process files without a video stream.
 process_non_video = false
+# Skip files that already have a current "<name>-report.txt" from a successful
+# Velox run. Uncheck in the app to process them again.
+skip_processed = true
 
 [pipeline]
 order = [

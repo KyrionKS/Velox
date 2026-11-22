@@ -336,6 +336,11 @@
               <span class="track"></span>
               <span>Write a report next to each file</span>
             </label>
+            <label class="switch">
+              <input type="checkbox" bind:checked={config.general.skip_processed} />
+              <span class="track"></span>
+              <span>Skip files that already have a successful report</span>
+            </label>
           </div>
 
           <div class="row">

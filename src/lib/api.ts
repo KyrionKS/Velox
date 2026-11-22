@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Config, EncoderInfo, FileInfo, FileItem } from "./types";
+import type { AppInfo, Config, EncoderInfo, FileInfo, FileItem } from "./types";
 
 export function getConfig(): Promise<Config> {
   return invoke<Config>("get_config");
@@ -19,6 +19,14 @@ export function reloadConfig(): Promise<Config> {
 
 export function startLogStream(): Promise<void> {
   return invoke("start_log_stream");
+}
+
+export function openPath(path: string): Promise<void> {
+  return invoke("open_path", { path });
+}
+
+export function appInfo(): Promise<AppInfo> {
+  return invoke<AppInfo>("app_info");
 }
 
 export function configPath(): Promise<string> {

@@ -31,6 +31,14 @@ All work happens in a scratch directory. The original is only replaced after
 the whole pipeline succeeded and the output was verified (parses, has video,
 duration matches). Set `verify_full_decode` to decode the whole output as well.
 
+Successful runs leave a `<name>-report.txt` next to the result. Velox uses it
+to recognise files that were already processed (a report older than the media
+file, or one documenting an error/cancellation, does not count). Those files
+are shown as **Already processed** and skipped by default; uncheck *Skip
+already processed files* in the Run panel to process them again, or use
+`--process-again` on the CLI. Reports can be opened directly from the queue
+and from **Activity → Reports**.
+
 ## Desktop app
 
 The app is built around a task-first layout rather than a settings dialog:
@@ -45,6 +53,9 @@ The app is built around a task-first layout rather than a settings dialog:
 
 Keyboard shortcuts: `⌘O` add files, `⌘⇧O` add a folder, `⌘R` start,
 `⌘,` settings, `⌘1` library, `⌘2` activity, `Esc` close settings.
+
+**About Velox** (info button or app menu) shows the app/Tauri version, platform,
+ffmpeg/ffprobe paths and versions, and the active config path.
 
 ## Requirements
 
@@ -89,7 +100,8 @@ The CLI keeps the original flags: `-c/--config`, `-r/--recursive`,
 `-n/--dry-run`, `--info`, `--ext`, `--output-dir`, `--temp-dir`,
 `--keep-original`, `--no-backup`, `--only`, `--skip`, `--mode`,
 `--target-size-mb`, `--bpp`, `-j/--jobs`, `--report`/`--no-report`,
-`--ffmpeg`, `--ffprobe`, `--init-config`, `--list-plugins`, `-v`, `-q`.
+`--ffmpeg`, `--ffprobe`, `--init-config`, `--list-plugins`, `-v`, `-q`,
+`--process-again`.
 
 ## Configuration
 
@@ -107,6 +119,7 @@ Key settings:
 - `standardise_audio.audio_bitrate_kbps = 0` — keep the source bitrate.
 - `general.concurrency = 2` — files processed in parallel.
 - `general.temp_dir = "source"` — scratch files stay on the source volume.
+- `general.skip_processed = true` — skip files with a current successful report.
 
 Numeric and boolean values may be quoted (`concurrency = "3"`,
 `enable_10bit = "true"`), matching the Python version.

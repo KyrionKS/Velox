@@ -245,6 +245,9 @@ pub struct GeneralConfig {
     pub write_report: bool,
     #[serde(default, deserialize_with = "flex::boolean")]
     pub process_non_video: bool,
+    /// Skip files that have a current successful Velox report next to them.
+    #[serde(default, deserialize_with = "flex::boolean")]
+    pub skip_processed: bool,
 }
 
 impl Default for GeneralConfig {
@@ -260,6 +263,7 @@ impl Default for GeneralConfig {
             verify_full_decode: false,
             write_report: true,
             process_non_video: false,
+            skip_processed: true,
         }
     }
 }
@@ -679,6 +683,7 @@ mod tests {
         assert_eq!(config.general.concurrency, 2);
         assert!(config.general.verify_output);
         assert!(config.general.write_report);
+        assert!(config.general.skip_processed);
         assert_eq!(config.plugins.hevc_gpu.encoder, "hevc_videotoolbox");
         assert_eq!(config.plugins.hevc_gpu.bitrate_mode, "quality");
         assert_eq!(config.plugins.hevc_gpu.quality, 50);

@@ -44,6 +44,7 @@
 
   const encodeEnabled = $derived(config.plugins.hevc_gpu.enabled);
   const sourceBytes = $derived(run.sourceBytes);
+  const processedCount = $derived(run.processedCount);
   const savedPercent = $derived(
     estimate && sourceBytes > 0 ? Math.max(0, 100 - (estimate.bytes / sourceBytes) * 100) : 0,
   );
@@ -194,6 +195,11 @@
         <p class="estimate-note">Add files to see how much space the run will save.</p>
       {/if}
     </div>
+
+    <label class="skip-row">
+      <input type="checkbox" bind:checked={config.general.skip_processed} />
+      <span>Skip already processed files{#if processedCount > 0} ({processedCount}){/if}</span>
+    </label>
 
     {#if run.running}
       <button class="stop-button" onclick={() => run.stop()}>
@@ -505,6 +511,22 @@
     background: linear-gradient(90deg, var(--bar-bg) 0%, var(--control-hover) 50%, var(--bar-bg) 100%);
     background-size: 200% 100%;
     animation: shimmer 1.4s linear infinite;
+  }
+
+  .skip-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 11px;
+    color: var(--muted);
+    font-size: 10.5px;
+    cursor: default;
+  }
+
+  .skip-row input {
+    width: 13px;
+    height: 13px;
+    accent-color: var(--accent);
   }
 
   .start-button {

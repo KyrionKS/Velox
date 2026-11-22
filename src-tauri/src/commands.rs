@@ -45,7 +45,22 @@ pub struct FileInfo {
     pub audio_kbps: u32,
     pub audio_languages: Vec<String>,
     pub subtitle_languages: Vec<String>,
+    pub already_processed: bool,
+    pub report_path: Option<String>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AppInfo {
+    pub version: String,
+    pub tauri_version: String,
+    pub os: String,
+    pub arch: String,
+    pub config_path: String,
+    pub ffmpeg_path: Option<String>,
+    pub ffprobe_path: Option<String>,
+    pub ffmpeg_version: Option<String>,
+    pub ffprobe_version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +74,69 @@ pub struct EncoderInfo {
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> Config {
     state.config()
+}
+
+#[tauri::command]
+pub fn open_path(path: String) -> Result<(), String> {
+    let is_url = path.starts_with("http://") || path.starts_with("https://");
+    let target = if is_url {
+        PathBuf::from(&path)
+    } else {
+        let target = PathBuf::from(&path);
+        if target.exists() {
+            target
+        } else if target
+            .parent()
+            .map(|parent| parent.exists())
+            .unwrap_or(false)
+        {
+            target.parent().expect("checked parent").to_path_buf()
+        } else {
+            return Err(format!("File does not exist: {path}"));
+        }
+    };
+
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/C", "start", ""]);
+        command
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = std::process::Command::new("xdg-open");
+
+    command
+        .arg(&target)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open {path}: {error}"))
+}
+
+#[tauri::command]
+pub async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
+    let config = state.config();
+    let mut info = AppInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        tauri_version: tauri::VERSION.to_string(),
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        config_path: state.config_path.to_string_lossy().into_owned(),
+        ffmpeg_path: None,
+        ffprobe_path: None,
+        ffmpeg_version: None,
+        ffprobe_version: None,
+    };
+
+    if let Ok(ffmpeg) = Ffmpeg::resolve(&config.general.ffmpeg_path, &config.general.ffprobe_path) {
+        info.ffmpeg_path = Some(ffmpeg.ffmpeg_path().to_string_lossy().into_owned());
+        info.ffprobe_path = Some(ffmpeg.ffprobe_path().to_string_lossy().into_owned());
+        let (ffmpeg_version, ffprobe_version) = ffmpeg.versions().await;
+        info.ffmpeg_version = Some(ffmpeg_version);
+        info.ffprobe_version = Some(ffprobe_version);
+    }
+    Ok(info)
 }
 
 #[tauri::command]
@@ -183,6 +261,14 @@ async fn file_info(ffmpeg: &Ffmpeg, path: &str) -> FileInfo {
         .file_name()
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string());
+    let existing_report = velox_core::report::existing_report(&path_buf);
+    let report_path = velox_core::report::source_report_path(&path_buf);
+    let report_path = if report_path.is_file() {
+        Some(report_path.to_string_lossy().into_owned())
+    } else {
+        None
+    };
+
     let base = FileInfo {
         path: path.to_string(),
         name,
@@ -203,6 +289,8 @@ async fn file_info(ffmpeg: &Ffmpeg, path: &str) -> FileInfo {
         audio_kbps: 0,
         audio_languages: Vec::new(),
         subtitle_languages: Vec::new(),
+        already_processed: existing_report.is_some(),
+        report_path,
         error: None,
     };
 

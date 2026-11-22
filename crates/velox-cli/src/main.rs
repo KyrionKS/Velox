@@ -101,6 +101,10 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue)]
     no_report: bool,
 
+    /// Process files even when a successful Velox report already exists.
+    #[arg(long)]
+    process_again: bool,
+
     /// Path to the ffmpeg binary.
     #[arg(long)]
     ffmpeg: Option<String>,
@@ -404,6 +408,9 @@ fn apply_overrides(config: &mut Config, args: &Args) {
     }
     if args.no_report {
         config.general.write_report = false;
+    }
+    if args.process_again {
+        config.general.skip_processed = false;
     }
 }
 

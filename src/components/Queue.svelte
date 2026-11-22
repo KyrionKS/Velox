@@ -4,8 +4,10 @@
     CheckCircle2,
     Circle,
     Eye,
+    FileText,
     FileVideo,
     FolderPlus,
+    History,
     Loader2,
     Plus,
     SkipForward,
@@ -20,7 +22,13 @@
     config,
     onAddFiles,
     onAddFolder,
-  }: { config: Config; onAddFiles: () => void; onAddFolder: () => void } = $props();
+    onOpenReport,
+  }: {
+    config: Config;
+    onAddFiles: () => void;
+    onAddFolder: () => void;
+    onOpenReport: (path: string) => void;
+  } = $props();
 
   function resolution(file: FileRow): string {
     const info = file.info;
@@ -71,6 +79,7 @@
     if (file.analyzing) return "Reading streams…";
     if (file.status === "running") return file.step;
     if (file.status === "done") return "Optimized";
+    if (file.status === "processed") return "Already processed — report available";
     if (file.status === "would_change") return "Would change (preview)";
     if (file.status === "error") return file.step;
     if (file.status === "stopped") return "Stopped";
@@ -82,6 +91,7 @@
 
   function resultText(file: FileRow): string {
     if (file.status === "done") return file.result;
+    if (file.status === "processed") return "done earlier";
     if (file.status === "would_change") return "preview";
     if (file.status === "error") return "Failed";
     if (file.status === "stopped") return "Stopped";
@@ -139,7 +149,7 @@
   {:else}
     <div class="file-list">
       {#each run.files as file (file.path)}
-        <article class:running={file.status === "running"} class:done={file.status === "done"} class:would_change={file.status === "would_change"} class:error={file.status === "error"} class="file-card">
+        <article class:running={file.status === "running"} class:done={file.status === "done"} class:processed={file.status === "processed"} class:would_change={file.status === "would_change"} class:error={file.status === "error"} class="file-card">
           <div class="state">
             {#if file.status === "running"}
               <Loader2 size={17} class="spin" />
@@ -147,6 +157,8 @@
               <CheckCircle2 size={17} />
             {:else if file.status === "error"}
               <AlertCircle size={17} />
+            {:else if file.status === "processed"}
+              <History size={16} />
             {:else if file.status === "would_change"}
               <Eye size={16} />
             {:else if file.status === "stopped"}
@@ -214,6 +226,15 @@
               <span class="result" class:positive={file.status === "done"} class:negative={file.status === "error"}>
                 {resultText(file)}
               </span>
+            {/if}
+            {#if file.reportPath}
+              <button
+                class="report"
+                title="Open report"
+                onclick={() => onOpenReport(file.reportPath!)}
+              >
+                <FileText size={14} />
+              </button>
             {/if}
             <button
               class="remove"
@@ -465,6 +486,10 @@
 
   .would_change .state {
     color: var(--accent-text);
+  }
+
+  .processed .state {
+    color: var(--green);
   }
 
   .error .state {

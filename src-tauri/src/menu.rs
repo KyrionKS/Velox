@@ -4,6 +4,7 @@ use tauri::{App, Emitter};
 pub fn install(app: &mut App) -> tauri::Result<()> {
     let handle = app.handle();
 
+    let about = MenuItemBuilder::with_id("about", "About Velox").build(handle)?;
     let settings = MenuItemBuilder::with_id("settings", "Settings…")
         .accelerator("CmdOrCtrl+,")
         .build(handle)?;
@@ -19,11 +20,7 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
     let stop = MenuItemBuilder::with_id("stop", "Stop").build(handle)?;
 
     let app_menu = SubmenuBuilder::new(handle, "Velox")
-        .item(&PredefinedMenuItem::about(
-            handle,
-            Some("About Velox"),
-            None,
-        )?)
+        .item(&about)
         .separator()
         .item(&settings)
         .separator()

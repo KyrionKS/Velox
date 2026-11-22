@@ -9,6 +9,7 @@ export interface GeneralConfig {
   verify_full_decode: boolean;
   write_report: boolean;
   process_non_video: boolean;
+  skip_processed: boolean;
 }
 
 export interface ReorderStreamsConfig {
@@ -171,12 +172,15 @@ export interface FileInfo {
   audio_kbps: number;
   audio_languages: string[];
   subtitle_languages: string[];
+  already_processed: boolean;
+  report_path: string | null;
   error: string | null;
 }
 
 export type FileStatus =
   | "queued"
   | "running"
+  | "processed"
   | "would_change"
   | "done"
   | "error"
@@ -195,7 +199,20 @@ export interface FileRow {
   stepLabel: string;
   result: string;
   status: FileStatus;
+  reportPath: string | null;
   passStartedAt: number | null;
+}
+
+export interface AppInfo {
+  version: string;
+  tauri_version: string;
+  os: string;
+  arch: string;
+  config_path: string;
+  ffmpeg_path: string | null;
+  ffprobe_path: string | null;
+  ffmpeg_version: string | null;
+  ffprobe_version: string | null;
 }
 
 export interface PassRow {

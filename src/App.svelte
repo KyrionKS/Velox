@@ -3,29 +3,32 @@
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open, message } from "@tauri-apps/plugin-dialog";
-  import { Activity, AlertTriangle, FolderOpen, LayoutGrid, Minus, Settings2, Square, X, Zap } from "lucide-svelte";
+  import { Activity, AlertTriangle, FolderOpen, Info, LayoutGrid, Minus, Settings2, Square, X, Zap } from "lucide-svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
 
+  import About from "./components/About.svelte";
   import ActivityView from "./components/Activity.svelte";
   import Queue from "./components/Queue.svelte";
   import RunPanel from "./components/RunPanel.svelte";
   import SettingsSheet from "./components/SettingsSheet.svelte";
   import StatusBar from "./components/StatusBar.svelte";
   import {
+    appInfo as getAppInfo,
     configError as getConfigError,
     configPath as getConfigPath,
     detectEncoders,
     getConfig,
+    openPath,
     reloadConfig,
     saveConfig,
     scanFolder,
     startLogStream,
   } from "./lib/api";
-  import { demoConfig, demoEncoders } from "./lib/demo";
+  import { demoAppInfo, demoConfig, demoEncoders } from "./lib/demo";
   import { estimateOutput } from "./lib/estimate";
   import { baseName } from "./lib/format";
   import { run } from "./lib/run.svelte";
-  import { FILE_FILTERS, type Config, type EncoderInfo, type FileItem } from "./lib/types";
+  import { FILE_FILTERS, type AppInfo, type Config, type EncoderInfo, type FileItem } from "./lib/types";
 
   type View = "library" | "activity";
 
@@ -37,6 +40,8 @@
   let encoders = $state<EncoderInfo | null>(null);
   let encoderError = $state<string | null>(null);
   let configError = $state<string | null>(null);
+  let aboutOpen = $state(params.has("about"));
+  let aboutInfo = $state<AppInfo | null>(null);
   let toast = $state<string | null>(null);
   let toastTimer: number | null = null;
   let isDemo = $state(false);
@@ -63,9 +68,11 @@
         config = demoConfig;
         configFile = "~/Library/Application Support/Velox/config.toml";
         encoders = demoEncoders;
+        if (params.has("about")) void openAbout();
         if (params.has("demo")) {
           if (params.get("demo") === "activity") run.loadDemoActivity();
           else if (params.get("demo") === "preview") run.loadDemoPreview();
+          else if (params.get("demo") === "processed") run.loadDemoProcessed();
           else run.loadDemo();
         }
         return;
@@ -77,6 +84,9 @@
       });
       unlistenMenu = await listen<string>("velox://menu", (event) => {
         switch (event.payload) {
+          case "about":
+            openAbout();
+            break;
           case "settings":
             settingsOpen = true;
             break;
@@ -210,8 +220,37 @@
     }
   }
 
+  async function openAbout() {
+    aboutOpen = true;
+    aboutInfo = null;
+    if (isDemo) {
+      aboutInfo = demoAppInfo;
+      return;
+    }
+    try {
+      aboutInfo = await getAppInfo();
+    } catch (error) {
+      showToast(String(error));
+    }
+  }
+
+  async function openReport(path: string) {
+    try {
+      await openPath(path);
+    } catch (error) {
+      showToast(String(error));
+    }
+  }
+
   async function start(dryRun: boolean) {
     if (!config || run.running || run.files.length === 0) return;
+    if (
+      config.general.skip_processed &&
+      run.files.every((file) => file.info?.already_processed)
+    ) {
+      showToast("All files already have a report. Uncheck “Skip already processed files” to run them again.");
+      return;
+    }
     try {
       await saveConfig(config);
       configFile = await getConfigPath();
@@ -313,6 +352,9 @@
     <div class="header-drag" data-tauri-drag-region></div>
 
     <div class="header-actions">
+      <button class="icon-button" onclick={openAbout} title="About Velox">
+        <Info size={17} />
+      </button>
       <button class="icon-button" onclick={() => (settingsOpen = true)} title="Settings (⌘,)">
         <Settings2 size={17} />
       </button>
@@ -356,7 +398,7 @@
     <main class="main">
       {#if view === "library"}
         <div class="workspace">
-          <Queue {config} onAddFiles={addFiles} onAddFolder={addFolder} />
+          <Queue {config} onAddFiles={addFiles} onAddFolder={addFolder} onOpenReport={openReport} />
           <RunPanel
             bind:config
             {estimate}
@@ -365,11 +407,15 @@
           />
         </div>
       {:else}
-        <ActivityView />
+        <ActivityView onOpenReport={openReport} />
       {/if}
     </main>
 
     <StatusBar onOpenActivity={() => (view = "activity")} />
+
+    {#if aboutOpen}
+      <About info={aboutInfo} onClose={() => (aboutOpen = false)} onOpenPath={openReport} />
+    {/if}
 
     {#if settingsOpen}
       <SettingsSheet

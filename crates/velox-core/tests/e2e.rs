@@ -747,3 +747,33 @@ async fn e2e_macos_videotoolbox_quality_mode() {
         "quality mode must pass -q:v"
     );
 }
+
+#[tokio::test]
+async fn e2e_successful_report_skips_file_on_the_next_run() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        skip();
+        return;
+    };
+    let tmp = TempDir::new().expect("tempdir");
+    let source = tmp.path().join("sample.mkv");
+    make_simple_sample(&ffmpeg, &source);
+
+    let (first, _backend) = run_pipeline(base_config(&ffmpeg, &ffprobe), &source, false).await;
+    assert!(first.ok(), "pipeline error: {:?}", first.error);
+    assert!(first.modified);
+    let report = first.report_path.as_ref().expect("first report");
+    assert!(report.exists());
+    let processed_bytes = std::fs::read(&source).expect("read processed file");
+
+    let (second, _backend) = run_pipeline(base_config(&ffmpeg, &ffprobe), &source, false).await;
+    assert!(second.ok(), "pipeline error: {:?}", second.error);
+    assert!(second.skipped, "second run must be skipped");
+    assert_eq!(second.reason, "already processed");
+    assert!(!second.modified);
+    assert_eq!(second.report_path.as_deref(), Some(report.as_path()));
+    assert_eq!(
+        std::fs::read(&source).expect("read source"),
+        processed_bytes,
+        "skipped file must stay untouched"
+    );
+}

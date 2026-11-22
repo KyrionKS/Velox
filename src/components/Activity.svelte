@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { Activity, CheckCircle2, Clock, FileVideo, Gauge, Trash2, Zap } from "lucide-svelte";
-  import { fmtBytes, fmtDuration, fmtSaved } from "../lib/format";
+  import { Activity, CheckCircle2, Clock, FileText, FileVideo, Gauge, Trash2, Zap } from "lucide-svelte";
+  import { baseName, fmtBytes, fmtDuration, fmtSaved } from "../lib/format";
   import { run } from "../lib/run.svelte";
+
+  let { onOpenReport }: { onOpenReport: (path: string) => void } = $props();
 
   let logEl = $state<HTMLPreElement | undefined>();
 
@@ -122,7 +124,26 @@
             </tbody>
           </table>
         </section>
-      {:else if !run.running && run.reports.length === 0}
+      {/if}
+
+      {#if run.reports.some((report) => report.report_path)}
+        <section class="panel">
+          <h2>Reports</h2>
+          <div class="reports">
+            {#each run.reports.filter((report) => report.report_path) as report}
+              <button class="report-row" onclick={() => onOpenReport(report.report_path!)}>
+                <FileText size={14} />
+                <span class="report-name">{baseName(report.final_path ?? report.source)}</span>
+                <span class="report-kind">
+                  {report.cancelled ? "cancelled" : report.error ? "error" : "processed"}
+                </span>
+              </button>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
+      {#if run.passes.length === 0 && !run.running && run.reports.length === 0}
         <div class="empty">
           <div class="empty-icon"><Activity size={28} /></div>
           <h2>No activity yet</h2>
@@ -396,6 +417,46 @@
     font-size: 8.5px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
+  }
+
+  .reports {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .report-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+    text-align: left;
+    cursor: default;
+  }
+
+  .report-row:hover {
+    background: var(--control-hover);
+  }
+
+  .report-name {
+    overflow: hidden;
+    flex: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .report-kind {
+    color: var(--muted);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .empty {

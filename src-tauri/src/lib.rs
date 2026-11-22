@@ -21,6 +21,8 @@ pub fn run() {
             commands::config_path,
             commands::config_error,
             commands::reload_config,
+            commands::open_path,
+            commands::app_info,
             commands::save_config,
             commands::detect_encoders,
             commands::probe_file,

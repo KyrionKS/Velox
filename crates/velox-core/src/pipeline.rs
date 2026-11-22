@@ -203,6 +203,22 @@ impl Pipeline {
             return report;
         }
 
+        if self.config.general.skip_processed {
+            if let Some(existing) = crate::report::existing_report(&source) {
+                report.skipped = true;
+                report.reason = "already processed".to_string();
+                report.final_path = Some(source.clone());
+                report.final_bytes = original.size;
+                report.report_path = Some(existing);
+                report.elapsed = started.elapsed().as_secs_f64();
+                tracing::info!("Skipping {}: already processed", source.display());
+                sink.emit(PipelineEvent::FileFinished {
+                    report: Box::new(report.clone()),
+                });
+                return report;
+            }
+        }
+
         tracing::info!("Processing {} ({})", source.display(), original.summary());
         sink.emit(PipelineEvent::FileStarted {
             path: source.clone(),

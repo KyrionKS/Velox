@@ -1,4 +1,4 @@
-import type { Config, EncoderInfo } from "./types";
+import type { AppInfo, Config, EncoderInfo } from "./types";
 
 /** Preview config used when the frontend runs in a normal browser (Vite). */
 export const demoConfig: Config = {
@@ -13,6 +13,7 @@ export const demoConfig: Config = {
     verify_full_decode: false,
     write_report: true,
     process_non_video: false,
+    skip_processed: true,
   },
   pipeline: {
     order: [
@@ -99,4 +100,16 @@ export const demoEncoders: EncoderInfo = {
   ffprobe: "/opt/homebrew/bin/ffprobe",
   video: ["hevc_videotoolbox", "h264_videotoolbox", "libx265", "libx264"],
   audio: ["aac", "libfdk_aac", "ac3", "eac3", "flac"],
+};
+
+export const demoAppInfo: AppInfo = {
+  version: "0.1.0",
+  tauri_version: "2.12",
+  os: "macos",
+  arch: "aarch64",
+  config_path: "~/Library/Application Support/Velox/config.toml",
+  ffmpeg_path: "/opt/homebrew/bin/ffmpeg",
+  ffprobe_path: "/opt/homebrew/bin/ffprobe",
+  ffmpeg_version: "ffmpeg version 8.0.1 Copyright (c) 2000-2026 the FFmpeg developers",
+  ffprobe_version: "ffprobe version 8.0.1 Copyright (c) 2007-2026 the FFmpeg developers",
 };

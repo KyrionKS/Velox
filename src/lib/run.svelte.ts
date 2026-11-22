@@ -14,6 +14,7 @@ function newRow(item: FileItem): FileRow {
     stepLabel: "Queued",
     result: "",
     status: "queued",
+    reportPath: null,
     passStartedAt: null,
   };
 }
@@ -86,6 +87,11 @@ class RunStore {
     return this.files.filter((file) => file.status === "would_change").length;
   }
 
+  get processedCount(): number {
+    return this.files.filter((file) => file.status === "processed" || file.info?.already_processed)
+      .length;
+  }
+
   addFiles(items: FileItem[]): void {
     const existing = new Set(this.files.map((file) => file.path));
     for (const item of items) {
@@ -112,6 +118,13 @@ class RunStore {
           file.info = info;
           file.size = info.size;
           file.name = info.name;
+          file.reportPath = info.report_path;
+          if (info.already_processed && file.status === "queued") {
+            file.status = "processed";
+            file.step = "Already processed";
+            file.result = "report";
+            file.progress = 1;
+          }
         }
         file.analyzing = false;
       }
@@ -174,6 +187,8 @@ class RunStore {
         audio_kbps: 3200,
         audio_languages: ["eng", "deu"],
         subtitle_languages: ["eng", "deu"],
+        already_processed: false,
+        report_path: null,
         error: null,
       },
       {
@@ -193,6 +208,8 @@ class RunStore {
         audio_kbps: 960,
         audio_languages: ["eng"],
         subtitle_languages: ["eng", "deu"],
+        already_processed: false,
+        report_path: null,
         error: null,
       },
       {
@@ -212,6 +229,8 @@ class RunStore {
         audio_kbps: 256,
         audio_languages: ["und"],
         subtitle_languages: [],
+        already_processed: false,
+        report_path: null,
         error: null,
       },
     ];
@@ -263,6 +282,20 @@ class RunStore {
       "   10-bit encode enabled (Main10, user enabled in config).",
       "   File is not in hevc. Transcoding with hevc_videotoolbox.",
     ];
+  }
+
+  loadDemoProcessed(): void {
+    this.loadDemo();
+    const file = this.files[0];
+    file.status = "processed";
+    file.step = "Already processed";
+    file.result = "report";
+    file.progress = 1;
+    file.reportPath = "/Volumes/Media/Movies/Blade Runner 2049 (2017)/Blade.Runner.2049.2017.2160p-report.txt";
+    if (file.info) {
+      file.info.already_processed = true;
+      file.info.report_path = file.reportPath;
+    }
   }
 
   loadDemoPreview(): void {
@@ -492,6 +525,12 @@ class RunStore {
   private finishFile(report: RunReport): void {
     const file = this.find(report.source);
     if (file) {
+      if (report.report_path) {
+        file.reportPath = report.report_path;
+        if (file.info) {
+          file.info.already_processed = !report.error && !report.cancelled;
+        }
+      }
       file.progress = report.error || report.cancelled ? file.progress : 1;
       if (report.cancelled) {
         file.status = "stopped";
@@ -502,9 +541,15 @@ class RunStore {
         file.step = report.error;
         file.result = "error";
       } else if (report.skipped) {
-        file.status = "skipped";
-        file.step = "Skipped";
-        file.result = "skipped";
+        if (report.reason === "already processed") {
+          file.status = "processed";
+          file.step = "Already processed";
+          file.result = "report";
+        } else {
+          file.status = "skipped";
+          file.step = "Skipped";
+          file.result = "skipped";
+        }
       } else if (report.would_change) {
         file.status = "would_change";
         file.step = "Would change";

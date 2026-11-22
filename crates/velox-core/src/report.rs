@@ -1,6 +1,6 @@
 //! Human readable processing report (`<name>-report.txt`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::events::fmt_bytes;
@@ -405,6 +405,45 @@ pub fn build_report(report: &RunReport, config: &Config) -> String {
     lines.join("\n")
 }
 
+/// The report location for a source file (next to it, same stem).
+pub fn source_report_path(path: &Path) -> PathBuf {
+    path.with_file_name(format!(
+        "{}-report.txt",
+        path.file_stem()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    ))
+}
+
+/// Return the report of a successful earlier run, when it is still current.
+///
+/// A report is ignored when it is older than the media file (the file was
+/// changed afterwards) or when it documents a failure/cancellation, so failed
+/// runs never make a file look "already processed".
+pub fn existing_report(path: &Path) -> Option<PathBuf> {
+    let report = source_report_path(path);
+    let report_meta = std::fs::metadata(&report).ok()?;
+    if !report_meta.is_file() {
+        return None;
+    }
+    if let (Ok(report_time), Ok(file_time)) = (
+        report_meta.modified(),
+        std::fs::metadata(path).and_then(|meta| meta.modified()),
+    ) {
+        if report_time < file_time {
+            return None;
+        }
+    }
+    let text = std::fs::read_to_string(&report).ok()?;
+    if !text.contains("VELOX") {
+        return None;
+    }
+    if text.contains("\n  ERROR\n") || text.contains("\n  FEHLER\n") {
+        return None;
+    }
+    Some(report)
+}
+
 pub fn report_path_for(report: &RunReport) -> PathBuf {
     let base = report
         .final_path
@@ -490,6 +529,25 @@ mod tests {
             }],
             outcomes: Vec::new(),
         }
+    }
+
+    #[test]
+    fn existing_report_ignores_failures_and_stale_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("movie.mkv");
+        std::fs::write(&source, b"video").unwrap();
+        assert!(existing_report(&source).is_none());
+
+        let report = source.with_file_name("movie-report.txt");
+        std::fs::write(
+            &report,
+            "VELOX – Processing report\n  Result         replaced\n",
+        )
+        .unwrap();
+        assert_eq!(existing_report(&source), Some(report.clone()));
+
+        std::fs::write(&report, "VELOX – Processing report\n  ERROR\n  boom\n").unwrap();
+        assert!(existing_report(&source).is_none());
     }
 
     #[test]
