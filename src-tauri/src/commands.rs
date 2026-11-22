@@ -335,6 +335,9 @@ pub async fn start_run(
     if files.is_empty() {
         return Err("No files selected.".to_string());
     }
+    if state.is_shutting_down() {
+        return Err("Velox is closing.".to_string());
+    }
     {
         let guard = state.run.lock().unwrap();
         if guard.is_some() {
